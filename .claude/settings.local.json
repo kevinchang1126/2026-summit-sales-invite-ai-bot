@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python3 -m pip install \"markitdown[pptx]\")",
+      "Bash(python3 -m markitdown \"C:\\\\Users\\\\ertai\\\\OneDrive - digiwin.biz\\\\市場營銷處_張恕愷Kevin\\\\【專案】\\\\2026 製造年會\\\\2026鼎新企業高峰年會-邀約文件V4.pptx\")",
+      "Bash(python3 -c \":*)",
+      "Bash(npx wrangler:*)",
+      "Bash(npm run:*)"
+    ]
+  }
+}

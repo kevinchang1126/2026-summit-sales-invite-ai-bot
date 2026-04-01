@@ -1,0 +1,3 @@
+/*
+  X-Frame-Options: ALLOW-FROM https://event.digiwin.com
+  Content-Security-Policy: frame-ancestors 'self' https://event.digiwin.com https://*.hubspot.com https://*.hubspotpagebuilder.com

@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>2026 鼎新企業高峰年會 — 邀約說帖產生器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <!-- 頂部導覽 -->
+  <header class="header">
+    <div class="header-inner">
+      <h1 class="logo">鼎新年會<span>邀約助手</span></h1>
+      <nav class="tabs">
+        <button class="tab active" data-tab="generate">生成說帖</button>
+        <button class="tab" data-tab="leaderboard">排行榜</button>
+        <button class="tab" data-tab="history">我的記錄</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- ===== 生成說帖頁 ===== -->
+    <section id="tab-generate" class="tab-content active">
+      <div class="card">
+        <h2 class="card-title">填寫客戶資訊</h2>
+        <form id="form-generate">
+          <!-- 必填 -->
+          <div class="form-group">
+            <label class="required">客戶產業別</label>
+            <select name="industry" required>
+              <option value="">請選擇</option>
+              <option value="製造業">製造業（通用）</option>
+              <option value="電子/半導體">電子／半導體</option>
+              <option value="食品/飲料">食品／飲料</option>
+              <option value="流通/批發">流通／批發</option>
+              <option value="零售/電商">零售／電商</option>
+              <option value="餐飲連鎖">餐飲連鎖</option>
+              <option value="戶外/運動用品">戶外／運動用品</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="required">邀約對象職能</label>
+            <select name="role" required>
+              <option value="">請選擇</option>
+              <option value="企業主/董事長/總經理">企業主／董事長／總經理</option>
+              <option value="副總/資訊長/技術主管">副總／資訊長／技術主管</option>
+              <option value="廠長/生產主管">廠長／生產主管</option>
+              <option value="營運長/供應鏈主管">營運長／供應鏈主管</option>
+              <option value="行銷/業務主管">行銷／業務主管</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="required">邀約管道</label>
+            <div class="radio-group">
+              <label class="radio-label"><input type="radio" name="channel" value="電話話術" required> 電話話術</label>
+              <label class="radio-label"><input type="radio" name="channel" value="LINE訊息"> LINE 訊息</label>
+              <label class="radio-label"><input type="radio" name="channel" value="Email"> Email</label>
+            </div>
+          </div>
+
+          <!-- 選填 -->
+          <details class="optional-section">
+            <summary>更多選填資訊（提供越多越精準）</summary>
+
+            <div class="form-group">
+              <label>客戶公司規模</label>
+              <select name="scale">
+                <option value="">不指定</option>
+                <option value="50人以下">50人以下</option>
+                <option value="50-200人">50–200人</option>
+                <option value="200-500人">200–500人</option>
+                <option value="500-1000人">500–1000人</option>
+                <option value="1000人以上">1000人以上</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>已知痛點或背景</label>
+              <textarea name="pain_points" rows="2" placeholder="例：最近在評估 AI 導入、缺工嚴重..."></textarea>
+            </div>
+
+            <div class="form-group">
+              <label>場次偏好</label>
+              <div class="radio-group">
+                <label class="radio-label"><input type="radio" name="session_pref" value="製造分場"> 製造分場</label>
+                <label class="radio-label"><input type="radio" name="session_pref" value="流通分場"> 流通分場</label>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>客戶類型</label>
+              <select name="customer_type">
+                <option value="">不指定</option>
+                <option value="有接觸的老客戶">有接觸的老客戶</option>
+                <option value="無接觸的老客戶">無接觸的老客戶</option>
+                <option value="有接觸的新客戶">有接觸的新客戶</option>
+                <option value="無接觸的新客戶">無接觸的新客戶</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>客戶偏好風格</label>
+              <div class="radio-group">
+                <label class="radio-label"><input type="radio" name="style" value="務實派"> 務實派（眼見為憑）</label>
+                <label class="radio-label"><input type="radio" name="style" value="願景型"> 願景型（整體藍圖）</label>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>你的暱稱（顯示在排行榜）</label>
+              <input type="text" name="author" placeholder="例：Kevin" maxlength="20">
+            </div>
+          </details>
+
+          <button type="submit" class="btn-primary" id="btn-generate">
+            <span class="btn-text">生成邀約說帖</span>
+            <span class="btn-loading" style="display:none">
+              <span class="spinner"></span> AI 生成中...
+            </span>
+          </button>
+        </form>
+      </div>
+
+      <!-- 結果區 -->
+      <div id="result-area" class="card" style="display:none">
+        <div class="result-header">
+          <h2 class="card-title">生成結果</h2>
+          <div class="result-actions">
+            <button class="btn-icon" id="btn-copy" title="複製內容">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <!-- 顯示模式 -->
+        <div id="result-display">
+          <div id="result-content" class="result-content"></div>
+        </div>
+        <!-- 編輯模式 -->
+        <div id="result-edit" style="display:none">
+          <textarea id="edit-textarea" class="edit-textarea"></textarea>
+        </div>
+
+        <!-- 操作列 -->
+        <div class="result-footer">
+          <button class="btn-vote btn-like" data-vote="like">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z" />
+              <path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
+            </svg>
+            好用
+          </button>
+          <button class="btn-vote btn-dislike" data-vote="dislike">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10 15V19a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z" />
+              <path d="M17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17" />
+            </svg>
+            需改善
+          </button>
+          <button class="btn-secondary" id="btn-edit">編輯</button>
+          <button class="btn-secondary" id="btn-save-edit" style="display:none">儲存</button>
+          <button class="btn-secondary" id="btn-cancel-edit" style="display:none">取消</button>
+          <button class="btn-secondary" id="btn-regenerate">重新生成</button>
+        </div>
+
+        <!-- AI 微調區 -->
+        <div class="refine-section">
+          <h3 class="refine-title">AI 微調</h3>
+          <div class="refine-chips">
+            <button class="refine-chip" data-instruction="請讓語氣更親切、像朋友聊天的感覺">更親切</button>
+            <button class="refine-chip" data-instruction="請讓語氣更正式、更有商務感">更正式</button>
+            <button class="refine-chip" data-instruction="請更強調痛點與急迫性，讓對方感受到不參加會錯過什麼">強調痛點</button>
+            <button class="refine-chip" data-instruction="請更突出年會講者陣容與議程亮點的吸引力">突出亮點</button>
+            <button class="refine-chip" data-instruction="請精簡文字，縮短到更精煉的版本">更精簡</button>
+            <button class="refine-chip" data-instruction="請加強結尾的行動呼籲，讓對方更想馬上回覆確認">強化CTA</button>
+          </div>
+          <div class="refine-custom">
+            <input type="text" id="refine-input" placeholder="自訂微調指示，例：加入對方公司最近的新聞..." maxlength="200">
+            <button class="btn-primary btn-refine" id="btn-refine">
+              <span class="btn-text">微調</span>
+              <span class="btn-loading" style="display:none"><span class="spinner"></span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 排行榜頁 ===== -->
+    <section id="tab-leaderboard" class="tab-content">
+      <div class="card">
+        <div class="leaderboard-header">
+          <h2 class="card-title">優秀說帖排行榜</h2>
+          <select id="sort-select" class="sort-select">
+            <option value="top">最多讚</option>
+            <option value="latest">最新</option>
+          </select>
+        </div>
+
+        <!-- 標籤搜尋/篩選 -->
+        <div class="leaderboard-filters">
+          <select id="filter-industry" class="filter-select">
+            <option value="">所有產業</option>
+            <option value="製造業">製造業</option>
+            <option value="電子/半導體">電子/半導體</option>
+            <option value="食品/飲料">食品/飲料</option>
+            <option value="流通/批發">流通/批發</option>
+            <option value="零售/電商">零售/電商</option>
+            <option value="餐飲連鎖">餐飲連鎖</option>
+            <option value="戶外/運動用品">戶外/運動用品</option>
+          </select>
+          <select id="filter-role" class="filter-select">
+            <option value="">所有職能</option>
+            <option value="企業主/董事長/總經理">企業主</option>
+            <option value="副總/資訊長/技術主管">副總/資訊長</option>
+            <option value="廠長/生產主管">廠長/生產主管</option>
+            <option value="營運長/供應鏈主管">營運長</option>
+            <option value="行銷/業務主管">行銷/業務主管</option>
+          </select>
+          <select id="filter-channel" class="filter-select">
+            <option value="">所有管道</option>
+            <option value="電話話術">電話</option>
+            <option value="LINE訊息">LINE</option>
+            <option value="Email">Email</option>
+          </select>
+          <button id="btn-clear-filters" class="btn-clear">清除</button>
+        </div>
+
+        <div id="leaderboard-list" class="pitch-list">
+          <div class="loading-placeholder">載入中...</div>
+        </div>
+        <button class="btn-secondary btn-loadmore" id="btn-loadmore" style="display:none">載入更多</button>
+      </div>
+    </section>
+
+    <!-- ===== 我的記錄頁 ===== -->
+    <section id="tab-history" class="tab-content">
+      <div class="card">
+        <h2 class="card-title">我的生成記錄</h2>
+        <div id="history-list" class="pitch-list">
+          <p class="empty-state">尚無記錄，去生成第一篇說帖吧！</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 年會資訊浮動按鈕 -->
+  <div class="fab-container">
+    <span class="fab-label">年會資訊</span>
+    <button class="fab" id="btn-info" title="年會資訊">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+        stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="16" x2="12" y2="12"></line>
+        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+      </svg>
+    </button>
+  </div>
+
+  <!-- 年會資訊 Modal -->
+  <div class="modal-overlay" id="modal-info" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>2026 鼎新企業高峰年會</h2>
+        <button class="modal-close" id="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="event-theme">AI共生 跨出新競局</p>
+        <p class="event-subtitle">Agentic AI 重構企業新運行模式</p>
+
+        <div class="info-section">
+          <h3>場次資訊</h3>
+          <div class="info-row"><strong>台北場</strong> 4/16（三）13:00–17:00｜台北大直典華</div>
+          <div class="info-row"><strong>台中場</strong> 4/21（一）13:00–17:00｜台中金典酒店</div>
+        </div>
+
+        <div class="info-section">
+          <h3>議程亮點</h3>
+          <ul>
+            <li><strong>詹文男院長 / 洪春暉所長</strong> — Agentic AI 重構企業競爭力</li>
+            <li><strong>KPMG 林大馗執行副總</strong> — AI Agent 企業治理新挑戰</li>
+            <li><strong>鼎新 黃盈彰總經理</strong> — 企業 Agent 落地路徑</li>
+            <li><strong>製造分場</strong>：高通 Edge AI、丹立電子轉型布局</li>
+            <li><strong>流通分場</strong>：商研院實務案例、點點心/小磨坊/歐都納高峰論壇</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
