@@ -8,10 +8,26 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <style>
+    /* 驗證畫面樣式 */
+    #auth-overlay {
+      position: fixed; inset: 0; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999;
+    }
+    #auth-overlay h2 { color: #333; margin-bottom: 10px; }
+    #auth-overlay p { color: #666; margin-bottom: 20px; }
+  </style>
 </head>
 
 <body>
-  <!-- 頂部導覽 -->
+  <!-- 認證畫面 -->
+  <div id="auth-overlay">
+    <div class="spinner" style="width: 40px; height: 40px; border-width: 4px; border-color: var(--primary) transparent transparent transparent; margin-bottom: 20px;"></div>
+    <h2>身分驗證中...</h2>
+    <p id="auth-message">正在與數智入口通訊，請稍候</p>
+  </div>
+
+  <div id="app-container" style="display: none;">
+    <!-- 頂部導覽 -->
   <header class="header">
     <div class="header-inner">
       <h1 class="logo">鼎新年會<span>邀約助手</span></h1>
@@ -115,7 +131,14 @@
 
             <div class="form-group">
               <label>你的暱稱（顯示在排行榜）</label>
-              <input type="text" name="author" placeholder="例：Kevin" maxlength="20">
+              <div style="font-size:14px; margin-bottom:8px; color:var(--text-light);">
+                目前身分：<strong id="display-ad-name" style="color:var(--text-main);"></strong>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <input type="text" id="custom-nickname-input" name="author" placeholder="或自訂新暱稱 (限 20 字)" maxlength="20" style="flex:1;">
+                <button type="button" id="btn-save-nickname" class="btn-secondary">更換暱稱</button>
+              </div>
+              <small id="nickname-hint" style="color:var(--text-light); display:block; margin-top:4px;">※ 暱稱每 7 天只能修改一次</small>
             </div>
           </details>
 
@@ -295,6 +318,8 @@
       </div>
     </div>
   </div>
+
+  </div> <!-- // end #app-container -->
 
   <script src="app.js"></script>
 </body>

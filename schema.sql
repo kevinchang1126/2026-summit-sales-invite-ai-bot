@@ -1,6 +1,15 @@
+-- 使用者記錄表 (Teams 登入)
+CREATE TABLE IF NOT EXISTS users (
+  user_code TEXT PRIMARY KEY,
+  ad_name TEXT NOT NULL,
+  custom_nickname TEXT,
+  last_nickname_update DATETIME
+);
+
 -- 說帖記錄表
 CREATE TABLE IF NOT EXISTS pitches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_code TEXT,
   industry TEXT NOT NULL,
   role TEXT NOT NULL,
   channel TEXT NOT NULL,

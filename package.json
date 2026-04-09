@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "wrangler pages dev public --d1=DB --compatibility-date=2024-12-01",
+    "dev": "npx wrangler pages dev public --d1=DB --compatibility-date=2024-12-01",
     "deploy": "npx wrangler pages deploy --project-name=summit-sales-invite-bot",
-    "db:init": "wrangler d1 execute summit-db --file=schema.sql",
-    "db:init:local": "wrangler d1 execute summit-db --local --file=schema.sql"
+    "db:init": "npx wrangler d1 execute DB --remote --file=schema.sql",
+    "db:init:local": "npx wrangler d1 execute DB --local --file=schema.sql"
   },
   "devDependencies": {
     "wrangler": "^3.100.0"

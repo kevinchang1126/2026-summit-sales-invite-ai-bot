@@ -11,7 +11,7 @@ export async function onRequestPost(context) {
 
   try {
     const body = await request.json();
-    const { industry, role, channel, scale, pain_points, session_pref, customer_type, style, author } = body;
+    const { industry, role, channel, scale, pain_points, session_pref, customer_type, style, author, user_code } = body;
 
     if (!industry || !role || !channel) {
       return jsonResponse({ error: '請填寫必填欄位：客戶產業別、邀約對象職能、邀約管道' }, 400);
@@ -29,12 +29,12 @@ export async function onRequestPost(context) {
 
     // 存入 D1
     const result = await env.DB.prepare(
-      `INSERT INTO pitches (industry, role, channel, scale, pain_points, session_pref, customer_type, style, content, author)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO pitches (industry, role, channel, scale, pain_points, session_pref, customer_type, style, content, author, user_code)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       industry, role, channel, scale || '', pain_points || '',
       session_pref || '', customer_type || '', style || '',
-      geminiResponse, author || '匿名業務'
+      geminiResponse, author || '匿名業務', user_code || null
     ).run();
 
     return jsonResponse({

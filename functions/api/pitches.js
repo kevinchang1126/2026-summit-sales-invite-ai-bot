@@ -10,6 +10,7 @@ export async function onRequestGet(context) {
   const industry = url.searchParams.get('industry');
   const role = url.searchParams.get('role');
   const channel = url.searchParams.get('channel');
+  const userCode = url.searchParams.get('user_code');
 
   let orderBy = 'likes DESC, created_at DESC';
   if (sort === 'latest') {
@@ -30,6 +31,10 @@ export async function onRequestGet(context) {
   if (channel) {
     conditions.push('channel = ?');
     params.push(channel);
+  }
+  if (userCode) {
+    conditions.push('user_code = ?');
+    params.push(userCode);
   }
 
   const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';

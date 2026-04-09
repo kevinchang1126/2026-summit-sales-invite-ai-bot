@@ -10,7 +10,7 @@ const state = {
     role: '',
     channel: ''
   },
-  history: JSON.parse(localStorage.getItem('pitch_history') || '[]'),
+  history: [],
   isEditing: false,
 };
 
@@ -22,6 +22,91 @@ function getOrCreateVoterId() {
   }
   return id;
 }
+
+// ===== Auth & Init =====
+document.addEventListener('DOMContentLoaded', async () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const token = urlParams.get('token');
+  const authOverlay = document.getElementById('auth-overlay');
+  const appContainer = document.getElementById('app-container');
+  const authMessage = document.getElementById('auth-message');
+
+  if (token) {
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '驗證失敗');
+
+      localStorage.setItem('user_code', data.UserCode);
+      localStorage.setItem('ad_name', data.UserName);
+      localStorage.setItem('custom_nickname', data.custom_nickname || '');
+      localStorage.setItem('display_name', data.display_name);
+
+      window.history.replaceState({}, document.title, window.location.pathname);
+      initApp();
+    } catch (err) {
+      authMessage.textContent = '登入失敗：' + err.message;
+      authMessage.style.color = 'red';
+      document.querySelector('.spinner').style.display = 'none';
+    }
+  } else {
+    if (localStorage.getItem('user_code')) {
+      initApp();
+    } else {
+      authMessage.innerHTML = '請由數智入口 (Teams) 開啓此工具<br>未授權的存取';
+      authMessage.style.color = 'red';
+      document.querySelector('.spinner').style.display = 'none';
+    }
+  }
+});
+
+function initApp() {
+  document.getElementById('auth-overlay').style.display = 'none';
+  document.getElementById('app-container').style.display = 'block';
+
+  document.getElementById('display-ad-name').textContent = localStorage.getItem('ad_name') || '';
+  document.getElementById('custom-nickname-input').value = localStorage.getItem('custom_nickname') || '';
+}
+
+// ===== Save Nickname =====
+document.getElementById('btn-save-nickname').addEventListener('click', async () => {
+  const newNickname = document.getElementById('custom-nickname-input').value.trim();
+  const userCode = localStorage.getItem('user_code');
+
+  if (!newNickname) return showToast('請輸入新暱稱');
+
+  const btn = document.getElementById('btn-save-nickname');
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/user/nickname', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_code: userCode, new_nickname: newNickname })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const hint = document.getElementById('nickname-hint');
+      hint.textContent = data.error;
+      hint.style.color = 'var(--danger)';
+      throw new Error(data.error);
+    }
+
+    localStorage.setItem('custom_nickname', data.custom_nickname);
+    localStorage.setItem('display_name', data.custom_nickname);
+    document.getElementById('nickname-hint').textContent = '※ 暱稱每 7 天只能修改一次 (修改成功)';
+    document.getElementById('nickname-hint').style.color = 'var(--success)';
+    showToast('暱稱更換成功！');
+  } catch (err) {
+    showToast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 // ===== Tab Switching =====
 document.querySelectorAll('.tab').forEach(tab => {
@@ -59,10 +144,9 @@ async function generatePitch() {
   const fd = new FormData(form);
   const data = Object.fromEntries(fd.entries());
 
-  // 儲存暱稱到 cookie
-  if (data.author) {
-    localStorage.setItem('author_name', data.author);
-  }
+  const customInput = document.getElementById('custom-nickname-input').value.trim();
+  data.author = customInput || localStorage.getItem('ad_name') || '匿名業務';
+  data.user_code = localStorage.getItem('user_code');
 
   btnGenerate.disabled = true;
   btnGenerate.querySelector('.btn-text').style.display = 'none';
@@ -92,18 +176,15 @@ async function generatePitch() {
     // Reset vote states
     document.querySelectorAll('.btn-vote').forEach(b => b.classList.remove('voted'));
 
-    // Save to local history
-    const historyItem = {
+    // 前端暫存，以便立刻在我的紀錄看到
+    state.history.unshift({
       id: result.id,
       industry: data.industry,
       role: data.role,
       channel: data.channel,
       content: result.content,
-      created_at: new Date().toISOString(),
-    };
-    state.history.unshift(historyItem);
-    if (state.history.length > 50) state.history.pop();
-    localStorage.setItem('pitch_history', JSON.stringify(state.history));
+      created_at: new Date().toISOString()
+    });
 
   } catch (err) {
     showToast(err.message);
@@ -266,7 +347,6 @@ function updateLocalHistory(pitchId, newContent) {
   const idx = state.history.findIndex(h => h.id === pitchId);
   if (idx !== -1) {
     state.history[idx].content = newContent;
-    localStorage.setItem('pitch_history', JSON.stringify(state.history));
   }
 }
 
@@ -480,34 +560,47 @@ function createPitchItem(pitch, rank) {
 }
 
 // ===== History =====
-function renderHistory() {
+async function renderHistory() {
   const list = document.getElementById('history-list');
-  if (state.history.length === 0) {
-    list.innerHTML = '<p class="empty-state">尚無記錄，去生成第一篇說帖吧！</p>';
-    return;
-  }
+  list.innerHTML = '<div class="loading-placeholder">載入中...</div>';
 
-  list.innerHTML = '';
-  state.history.forEach((item) => {
-    const el = document.createElement('div');
-    el.className = 'pitch-item';
-    el.innerHTML = `
-      <div class="pitch-meta">
-        <span class="tag tag-industry">${escapeHtml(item.industry)}</span>
-        <span class="tag tag-channel">${escapeHtml(item.channel)}</span>
-        <span class="tag tag-role">${escapeHtml(item.role)}</span>
-      </div>
-      <div class="pitch-preview" onclick="this.classList.toggle('expanded')">${escapeHtml(item.content)}</div>
-      <div class="pitch-footer">
-        <span>${formatDate(item.created_at)}</span>
-        <div style="display:flex;gap:6px">
-          <button class="btn-secondary" onclick="copyText(this)" data-content="${escapeAttr(item.content)}">複製</button>
-          <button class="btn-secondary" onclick="reuseFromHistory(${item.id})">載入編輯</button>
+  try {
+    const userCode = localStorage.getItem('user_code');
+    if (!userCode) throw new Error('未登入');
+
+    const res = await fetch(`/api/pitches?user_code=${encodeURIComponent(userCode)}&limit=50`);
+    const data = await res.json();
+    state.history = data.pitches || [];
+
+    if (state.history.length === 0) {
+      list.innerHTML = '<p class="empty-state">尚無記錄，去生成第一篇說帖吧！</p>';
+      return;
+    }
+
+    list.innerHTML = '';
+    state.history.forEach((item) => {
+      const el = document.createElement('div');
+      el.className = 'pitch-item';
+      el.innerHTML = `
+        <div class="pitch-meta">
+          <span class="tag tag-industry">${escapeHtml(item.industry)}</span>
+          <span class="tag tag-channel">${escapeHtml(item.channel)}</span>
+          <span class="tag tag-role">${escapeHtml(item.role)}</span>
         </div>
-      </div>
-    `;
-    list.appendChild(el);
-  });
+        <div class="pitch-preview" onclick="this.classList.toggle('expanded')">${escapeHtml(item.content)}</div>
+        <div class="pitch-footer">
+          <span>${formatDate(item.created_at)}</span>
+          <div style="display:flex;gap:6px">
+            <button class="btn-secondary" onclick="copyText(this)" data-content="${escapeAttr(item.content)}">複製</button>
+            <button class="btn-secondary" onclick="reuseFromHistory(${item.id})">載入編輯</button>
+          </div>
+        </div>
+      `;
+      list.appendChild(el);
+    });
+  } catch (err) {
+    list.innerHTML = '<p class="empty-state">無法載入歷史記錄</p>';
+  }
 }
 
 // 從歷史記錄載入到編輯區
@@ -545,12 +638,8 @@ document.getElementById('modal-info').addEventListener('click', (e) => {
   }
 });
 
-// ===== Restore saved author name =====
-const savedAuthor = localStorage.getItem('author_name');
-if (savedAuthor) {
-  const authorInput = form.querySelector('[name="author"]');
-  if (authorInput) authorInput.value = savedAuthor;
-}
+// ===== Global Reset ===== 
+// 移除原本的 localStorage.getItem('author_name') 機制
 
 // ===== Utilities =====
 function escapeHtml(str) {
