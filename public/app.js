@@ -54,8 +54,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.querySelector('.spinner').style.display = 'none';
     }
   } else {
+    const IS_TEAMS_AUTH_REQUIRED = false; // TODO: 之後 Teams API 建好後，請將這裡改為 true
+
     if (localStorage.getItem('user_code')) {
+      // 已經登入過
       initApp();
+    } else if (!IS_TEAMS_AUTH_REQUIRED) {
+      // 暫時允許直接 URL 造訪，給予暫時身分
+      localStorage.setItem('user_code', 'temp_' + Date.now());
+      localStorage.setItem('ad_name', '直接造訪用戶');
+      localStorage.setItem('custom_nickname', '');
+      initApp(true); // 傳入 true 表示是未經 auth 的直接造訪
     } else {
       authMessage.innerHTML = '請由數智入口 (Teams) 開啓此工具<br>未授權的存取';
       authMessage.style.color = 'red';
@@ -64,7 +73,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-function initApp() {
+function initApp(isDirectAccess = false) {
   document.getElementById('auth-overlay').style.display = 'none';
   document.getElementById('app-container').style.display = 'block';
 
