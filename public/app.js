@@ -49,15 +49,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       window.history.replaceState({}, document.title, window.location.pathname);
       initApp();
     } catch (err) {
-      authMessage.textContent = '登入失敗：' + err.message;
+      authMessage.innerHTML = '請由數智入口&gt;諾瓦Nova 進入活動邀約快手<br><small style="color:#999; margin-top:8px; display:block;">(錯誤詳細：' + err.message + ')</small>';
       authMessage.style.color = 'red';
       document.querySelector('.spinner').style.display = 'none';
+      document.querySelector('#auth-overlay h2').textContent = '驗證失敗';
     }
   } else {
-    const IS_TEAMS_AUTH_REQUIRED = false; // TODO: 之後 Teams API 建好後，請將這裡改為 true
+    const IS_TEAMS_AUTH_REQUIRED = true; // 開啟 Teams 驗證限制
+    const userCode = localStorage.getItem('user_code');
 
-    if (localStorage.getItem('user_code')) {
-      // 已經登入過
+    if (userCode && (!IS_TEAMS_AUTH_REQUIRED || !userCode.startsWith('temp_'))) {
+      // 已經有合法的登入紀錄 (非暫時身分)
       initApp();
     } else if (!IS_TEAMS_AUTH_REQUIRED) {
       // 暫時允許直接 URL 造訪，給予暫時身分
@@ -66,9 +68,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       localStorage.setItem('custom_nickname', '');
       initApp(true); // 傳入 true 表示是未經 auth 的直接造訪
     } else {
-      authMessage.innerHTML = '請由數智入口 (Teams) 開啓此工具<br>未授權的存取';
+      authMessage.innerHTML = '請由數智入口&gt;諾瓦Nova 進入活動邀約快手';
       authMessage.style.color = 'red';
       document.querySelector('.spinner').style.display = 'none';
+      document.querySelector('#auth-overlay h2').textContent = '驗證失敗';
     }
   }
 });
