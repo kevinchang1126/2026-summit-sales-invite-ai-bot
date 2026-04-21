@@ -153,24 +153,9 @@ window.addEventListener('beforeunload', e => {
   }
 });
 
-// ─── 活動 ID 工具 ────────────────────────────────────────────────────────────
+// ─── 活動 ID 格式驗證 ────────────────────────────────────────────────────────
+// 活動專案代號由外部系統指派（YYYYMM+4碼），本平台只做格式卡控，不自動產生
 const EVENT_ID_RE = /^20\d{2}(0[1-9]|1[0-2])\d{4}$/;
-
-/** 從 event_date (YYYY-MM-DD) 取 YYYYMM 前綴 */
-function dateToYm(dateStr) {
-  if (!dateStr || dateStr.length < 7) return '';
-  return dateStr.slice(0, 4) + dateStr.slice(5, 7); // "2026-04-01" → "202604"
-}
-
-/** 呼叫 API 取得建議 ID（非同步） */
-async function fetchNextEventId(eventDate) {
-  const ym = dateToYm(eventDate);
-  if (!ym) return '';
-  try {
-    const data = await api('GET', `/api/events?next_id=${ym}`);
-    return data.next_id || '';
-  } catch { return ''; }
-}
 
 function bindEventModal() {
   const modal = document.getElementById('event-modal');
@@ -178,31 +163,14 @@ function bindEventModal() {
   modal.querySelectorAll('[data-close-modal]').forEach(b => b.addEventListener('click', () => modal.classList.remove('active')));
   modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('active'); });
 
-  // 「建議 ID」按鈕
-  document.getElementById('btn-suggest-id').addEventListener('click', async () => {
-    const form = document.getElementById('event-form');
-    const dateVal = form.event_date.value;
-    if (!dateVal) { showToast('請先填寫活動日期'); return; }
-    const btn = document.getElementById('btn-suggest-id');
-    btn.disabled = true; btn.textContent = '查詢中...';
-    const nextId = await fetchNextEventId(dateVal);
-    btn.disabled = false; btn.textContent = '建議 ID';
-    if (nextId) {
-      form.id.value = nextId;
-      const hint = document.getElementById('event-id-hint');
-      hint.textContent = `系統建議：${nextId}（可自行修改）`;
-      hint.style.display = 'block';
+  // ID 欄位即時格式驗證提示
+  document.getElementById('event-id-input').addEventListener('input', function () {
+    const err = document.getElementById('event-id-error');
+    if (!this.value || EVENT_ID_RE.test(this.value)) {
+      err.style.display = 'none';
     } else {
-      showToast('無法取得建議 ID，請手動輸入');
-    }
-  });
-
-  // 活動日期變動時自動更新 ID 欄位 placeholder 前綴
-  document.querySelector('#event-form [name=event_date]').addEventListener('change', function () {
-    const ym = dateToYm(this.value);
-    const idInput = document.getElementById('event-id-input');
-    if (ym && !idInput.value) {
-      idInput.placeholder = ym + '____';
+      err.textContent = '格式錯誤：應為 10 碼數字，YYYYMM+4碼（如 2026040001）';
+      err.style.display = 'block';
     }
   });
 
@@ -263,23 +231,23 @@ async function openEventModal(e, prefill) {
   await populateSeriesSelect(e?.series_id);
 
   const idInput = document.getElementById('event-id-input');
-  const idHint  = document.getElementById('event-id-hint');
-  idHint.style.display = 'none';
+  const idErr   = document.getElementById('event-id-error');
+  if (idErr) idErr.style.display = 'none';
 
   if (e) {
     // 編輯模式：ID 唯讀（不可更改）
-    form.dataset.editId = e.id;
-    idInput.value    = e.id;
-    idInput.readOnly = true;
-    idInput.style.background = 'var(--bg-secondary)';
-    document.getElementById('btn-suggest-id').style.display = 'none';
+    form.dataset.editId  = e.id;
+    idInput.value        = e.id;
+    idInput.readOnly     = true;
+    idInput.style.background = 'var(--bg-secondary, #f3f4f6)';
+    idInput.style.cursor = 'not-allowed';
 
-    form.name.value        = e.name || '';
-    form.description.value = e.description || '';
-    form.event_date.value  = e.event_date || '';
-    form.event_time.value  = e.event_time || '';
-    form.location.value    = e.location || '';
-    form.status.value      = e.status || 'upcoming';
+    form.name.value         = e.name || '';
+    form.description.value  = e.description || '';
+    form.event_date.value   = e.event_date || '';
+    form.event_time.value   = e.event_time || '';
+    form.location.value     = e.location || '';
+    form.status.value       = e.status || 'upcoming';
     form.series_order.value = e.series_order || '';
     try {
       const ta = e.target_audience ? JSON.parse(e.target_audience) : {};
@@ -287,26 +255,21 @@ async function openEventModal(e, prefill) {
       form.audience_titles.value    = (ta.titles || []).join(',');
     } catch { /* noop */ }
   } else {
-    // 新增模式：ID 可編輯
+    // 新增模式：ID 必填，人工輸入
     delete form.dataset.editId;
-    idInput.value    = '';
-    idInput.readOnly = false;
+    idInput.value        = '';
+    idInput.readOnly     = false;
     idInput.style.background = '';
-    idInput.placeholder = '2026040001';
-    document.getElementById('btn-suggest-id').style.display = '';
-    form.status.value = 'upcoming';
+    idInput.style.cursor = '';
+    idInput.placeholder  = '請輸入活動專案代號（如 2026040001）';
+    form.status.value    = 'upcoming';
   }
 
   // 來自 ingest 的預填值覆蓋
   if (prefill) {
     if (prefill.name)        form.name.value = prefill.name;
     if (prefill.description) form.description.value = prefill.description;
-    if (prefill.event_date)  {
-      form.event_date.value = prefill.event_date;
-      // 自動更新 ID 欄位 placeholder 前綴
-      const ym = dateToYm(prefill.event_date);
-      if (ym) document.getElementById('event-id-input').placeholder = ym + '____';
-    }
+    if (prefill.event_date) form.event_date.value = prefill.event_date;
     if (prefill.event_time)  form.event_time.value = prefill.event_time;
     if (prefill.location)    form.location.value = prefill.location;
     if (prefill.target_audience) {
@@ -697,9 +660,28 @@ function showIngestPreview(pv, filename) {
     sessionList.innerHTML = pv.sessions.map((s, i) =>
       `<div class="ingest-session-item">
         <strong>${escapeHtml(s.name || `場次 ${i + 1}`)}</strong>
-        ${s.event_date || ''} ${s.event_time || ''} ${s.location ? '📍 ' + escapeHtml(s.location) : ''}
+        <span style="color:var(--text-secondary);font-size:0.8rem;margin-left:6px;">${s.event_date || ''} ${s.event_time || ''} ${s.location ? '📍 ' + escapeHtml(s.location) : ''}</span>
+        <div style="margin-top:6px;display:flex;align-items:center;gap:8px;">
+          <label style="font-size:0.8rem;white-space:nowrap;color:var(--text-secondary);">專案代號 <span style="color:var(--danger)">*</span></label>
+          <input type="text"
+                 class="session-id-input"
+                 data-idx="${i}"
+                 maxlength="10"
+                 placeholder="2026040001"
+                 value="${escapeHtml(s.id || '')}"
+                 style="font-family:monospace;letter-spacing:1px;font-size:0.85rem;padding:4px 8px;flex:1;max-width:160px;">
+          <span class="session-id-err" style="color:var(--danger);font-size:0.75rem;display:none;">格式錯誤</span>
+        </div>
       </div>`
     ).join('');
+
+    // 即時格式驗證
+    sessionList.querySelectorAll('.session-id-input').forEach(inp => {
+      inp.addEventListener('input', function () {
+        const err = this.closest('.ingest-session-item').querySelector('.session-id-err');
+        err.style.display = (this.value && !EVENT_ID_RE.test(this.value)) ? 'inline' : 'none';
+      });
+    });
 
     const confirmBtn = document.getElementById('ingest-confirm');
     confirmBtn.textContent = `建立系列 + ${pv.sessions.length} 場次`;
@@ -729,7 +711,42 @@ async function handleIngestConfirm() {
   const modal = document.getElementById('ingest-modal');
 
   if (pv.is_series && pv.sessions?.length > 0) {
-    // ── 系列活動：單次 batch 請求，不受 rate limit 影響 ──────────────────
+    // ── 收集並驗證各場次 ID ───────────────────────────────────────────────
+    const idInputs = document.querySelectorAll('#pv-sessions .session-id-input');
+    const sessionIds = [];
+    let hasError = false;
+
+    idInputs.forEach((inp, i) => {
+      const val = inp.value.trim();
+      const err = inp.closest('.ingest-session-item').querySelector('.session-id-err');
+      if (!val) {
+        err.textContent = '必填'; err.style.display = 'inline'; hasError = true;
+      } else if (!EVENT_ID_RE.test(val)) {
+        err.textContent = '格式錯誤'; err.style.display = 'inline'; hasError = true;
+      } else {
+        err.style.display = 'none';
+      }
+      sessionIds[i] = val;
+    });
+
+    // 檢查重複 ID
+    const seen = new Set();
+    sessionIds.forEach((id, i) => {
+      if (!id) return;
+      const inp = idInputs[i];
+      const err = inp.closest('.ingest-session-item').querySelector('.session-id-err');
+      if (seen.has(id)) {
+        err.textContent = '與其他場次重複'; err.style.display = 'inline'; hasError = true;
+      }
+      seen.add(id);
+    });
+
+    if (hasError) {
+      showToast('請填寫所有場次的活動專案代號（格式：YYYYMM+4碼）');
+      return; // 不關 modal，讓使用者修正
+    }
+
+    // ── 所有 ID 驗證通過 → 呼叫 batch 端點 ──────────────────────────────
     modal.classList.remove('active');
     showSavingOverlay(`建立系列「${pv.series_name || pv.name}」及 ${pv.sessions.length} 場次中，請勿關閉頁面...`);
     try {
@@ -739,7 +756,8 @@ async function handleIngestConfirm() {
           description: pv.description || null,
           status: 'active',
         },
-        sessions: pv.sessions.map(s => ({
+        sessions: pv.sessions.map((s, i) => ({
+          id: sessionIds[i],
           name: s.name,
           description: s.description || pv.description || null,
           event_date: s.event_date,
@@ -753,8 +771,7 @@ async function handleIngestConfirm() {
       loadEvents();
     } catch (err) {
       showToast('批次建立失敗：' + err.message);
-      // 重新開啟 modal 讓使用者可以重試
-      modal.classList.add('active');
+      modal.classList.add('active'); // 重新開啟讓使用者修正
     } finally {
       hideSavingOverlay();
     }

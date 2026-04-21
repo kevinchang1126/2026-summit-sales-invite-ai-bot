@@ -1,7 +1,11 @@
 // POST /api/events/batch —— 一次建立系列 + 多場次（豁免逐筆限流）
-// body: { series: { name, description, status }, sessions: [{ name, event_date, ... }] }
+// body: {
+//   series: { name, description, status },
+//   sessions: [{ id, name, event_date, event_time, location, description, target_audience }, ...]
+// }
+// 注意：每個 session 的 id（活動專案代號）為必填，格式 YYYYMM+4碼
 import { getUserCode, getUserRole, jsonResponse, jsonError } from '../_auth.js';
-import { generateNextEventId } from './index.js';
+import { EVENT_ID_REGEX } from './index.js';
 
 export async function onRequestPost({ request, env }) {
   const userCode = getUserCode(request);
@@ -14,8 +18,21 @@ export async function onRequestPost({ request, env }) {
   try { body = await request.json(); } catch { return jsonError('JSON 格式錯誤', 400); }
 
   const { series: seriesData, sessions } = body;
-  if (!seriesData?.name)       return jsonError('缺少 series.name', 400);
+  if (!seriesData?.name) return jsonError('缺少 series.name', 400);
   if (!Array.isArray(sessions) || sessions.length === 0) return jsonError('sessions 不可為空', 400);
+
+  // ── 前置驗證：所有 session 必須有合法 ID 才開始寫入 ────────────────────
+  const idsSeen = new Set();
+  for (let i = 0; i < sessions.length; i++) {
+    const s = sessions[i];
+    const label = `場次 ${i + 1}（${s.name?.slice(0, 15) ?? ''}）`;
+    if (!s.id)                      return jsonError(`${label} 缺少活動專案代號`, 400);
+    if (!EVENT_ID_REGEX.test(s.id)) return jsonError(`${label} 專案代號格式錯誤（應為 YYYYMM+4碼，如 2026040001）`, 400);
+    if (idsSeen.has(s.id))          return jsonError(`${label} 專案代號 ${s.id} 與其他場次重複`, 400);
+    idsSeen.add(s.id);
+    if (!s.name)       return jsonError(`${label} 缺少 name`, 400);
+    if (!s.event_date) return jsonError(`${label} 缺少 event_date`, 400);
+  }
 
   // ── 1. 建立系列 ──────────────────────────────────────────────────────────
   const seriesId = crypto.randomUUID();
@@ -24,40 +41,15 @@ export async function onRequestPost({ request, env }) {
      VALUES (?, ?, ?, ?, ?)`
   ).bind(seriesId, seriesData.name, seriesData.description || null, seriesData.status || 'active', userCode).run();
 
-  // ── 2. 批次建立場次（收集同月份計數，避免 ID 碰撞）────────────────────
-  // 先算出每個月份的起始 offset
-  const monthOffsets = {}; // { '202604': 0, '202605': 0, ... }
-
-  // 預先查出各月最大序號
-  const monthsNeeded = [...new Set(sessions.map(s => (s.event_date || '').slice(0, 7).replace('-', '')))];
-  for (const ym of monthsNeeded) {
-    if (!ym || ym.length !== 6) continue;
-    const row = await env.DB.prepare(
-      `SELECT MAX(CAST(SUBSTR(id, 7) AS INTEGER)) AS max_seq
-       FROM events WHERE id LIKE ? AND LENGTH(id) = 10`
-    ).bind(ym + '%').first();
-    monthOffsets[ym] = row?.max_seq ?? 0;
-  }
-
+  // ── 2. 批次建立場次 ───────────────────────────────────────────────────────
   const createdEvents = [];
-  const taJson = sessions[0]?.target_audience
-    ? JSON.stringify(sessions[0].target_audience)
-    : null;
+  const sharedTa = sessions.find(s => s.target_audience)?.target_audience;
 
   for (let i = 0; i < sessions.length; i++) {
     const s = sessions[i];
-    if (!s.name || !s.event_date) continue;
-
-    // 計算此場次的 ID
-    const ym = s.event_date.slice(0, 7).replace('-', '');
-    monthOffsets[ym] = (monthOffsets[ym] ?? 0) + 1;
-    const seq = monthOffsets[ym];
-    if (seq > 9999) { continue; } // 超限跳過
-    const eventId = ym + String(seq).padStart(4, '0');
-
     const sessionTa = s.target_audience
       ? JSON.stringify(s.target_audience)
-      : taJson;
+      : (sharedTa ? JSON.stringify(sharedTa) : null);
 
     try {
       await env.DB.prepare(
@@ -65,7 +57,7 @@ export async function onRequestPost({ request, env }) {
                              location, series_id, series_order, status, created_by)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'upcoming', ?)`
       ).bind(
-        eventId, s.name, s.description || null, sessionTa,
+        s.id, s.name, s.description || null, sessionTa,
         s.event_date, s.event_time || null, s.location || null,
         seriesId, i + 1, userCode
       ).run();
@@ -74,12 +66,14 @@ export async function onRequestPost({ request, env }) {
       if (roleInfo.role === 'eventadmin') {
         await env.DB.prepare(
           `INSERT OR IGNORE INTO event_admins (user_code, event_id, granted_by) VALUES (?, ?, 'self:create')`
-        ).bind(userCode, eventId).run();
+        ).bind(userCode, s.id).run();
       }
 
-      createdEvents.push({ id: eventId, name: s.name, event_date: s.event_date });
+      createdEvents.push({ id: s.id, name: s.name, event_date: s.event_date });
     } catch (e) {
-      if (String(e.message).includes('UNIQUE')) continue; // ID 碰撞跳過（不常見）
+      if (String(e.message).includes('UNIQUE')) {
+        return jsonError(`活動專案代號 ${s.id} 已存在，請確認後重試`, 409);
+      }
       throw e;
     }
   }
