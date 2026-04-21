@@ -1,14 +1,26 @@
 // Rate limiting middleware — 基於 cookie + IP 的限流
-// 每個使用者每分鐘最多 10 次 API 呼叫
+// 公開端點每分鐘最多 30 次；已有 auth 的管理端點豁免（endpoint 本身已驗權）
 
 const RATE_LIMIT_WINDOW = 60; // seconds
-const RATE_LIMIT_MAX = 10; // requests per window
+const RATE_LIMIT_MAX = 30;    // requests per window（公開端點用）
+
+// 需要 admin 驗證的端點，已在 handler 內部驗權，不需額外限流
+const ADMIN_PATH_PREFIXES = [
+  '/api/events',   // 需要 eventadmin/superadmin
+  '/api/admin',    // 需要 superadmin
+];
 
 export async function onRequest(context) {
   const { request, env, next } = context;
 
   // 只對 POST 請求做限流
   if (request.method !== 'POST') {
+    return next();
+  }
+
+  // 管理端點豁免——已在 handler 內做身份驗證
+  const url = new URL(request.url);
+  if (ADMIN_PATH_PREFIXES.some(prefix => url.pathname.startsWith(prefix))) {
     return next();
   }
 

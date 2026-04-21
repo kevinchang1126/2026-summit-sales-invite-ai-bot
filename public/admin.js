@@ -134,16 +134,90 @@ function statusLabel(s) {
   return { upcoming: '即將舉行', ongoing: '進行中', ended: '已結束', archived: '已封存' }[s] || s;
 }
 
+// ─── 儲存遮罩（防止操作中途離頁）──────────────────────────────────────────
+let _savingActive = false;
+
+function showSavingOverlay(msg) {
+  _savingActive = true;
+  document.getElementById('saving-overlay-msg').textContent = msg || '儲存中，請勿關閉頁面...';
+  document.getElementById('saving-overlay').classList.add('active');
+}
+function hideSavingOverlay() {
+  _savingActive = false;
+  document.getElementById('saving-overlay').classList.remove('active');
+}
+window.addEventListener('beforeunload', e => {
+  if (_savingActive) {
+    e.preventDefault();
+    e.returnValue = '正在儲存資料，確定要離開嗎？';
+  }
+});
+
+// ─── 活動 ID 工具 ────────────────────────────────────────────────────────────
+const EVENT_ID_RE = /^20\d{2}(0[1-9]|1[0-2])\d{4}$/;
+
+/** 從 event_date (YYYY-MM-DD) 取 YYYYMM 前綴 */
+function dateToYm(dateStr) {
+  if (!dateStr || dateStr.length < 7) return '';
+  return dateStr.slice(0, 4) + dateStr.slice(5, 7); // "2026-04-01" → "202604"
+}
+
+/** 呼叫 API 取得建議 ID（非同步） */
+async function fetchNextEventId(eventDate) {
+  const ym = dateToYm(eventDate);
+  if (!ym) return '';
+  try {
+    const data = await api('GET', `/api/events?next_id=${ym}`);
+    return data.next_id || '';
+  } catch { return ''; }
+}
+
 function bindEventModal() {
   const modal = document.getElementById('event-modal');
   document.getElementById('btn-new-event').addEventListener('click', () => openEventModal(null));
   modal.querySelectorAll('[data-close-modal]').forEach(b => b.addEventListener('click', () => modal.classList.remove('active')));
   modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('active'); });
 
+  // 「建議 ID」按鈕
+  document.getElementById('btn-suggest-id').addEventListener('click', async () => {
+    const form = document.getElementById('event-form');
+    const dateVal = form.event_date.value;
+    if (!dateVal) { showToast('請先填寫活動日期'); return; }
+    const btn = document.getElementById('btn-suggest-id');
+    btn.disabled = true; btn.textContent = '查詢中...';
+    const nextId = await fetchNextEventId(dateVal);
+    btn.disabled = false; btn.textContent = '建議 ID';
+    if (nextId) {
+      form.id.value = nextId;
+      const hint = document.getElementById('event-id-hint');
+      hint.textContent = `系統建議：${nextId}（可自行修改）`;
+      hint.style.display = 'block';
+    } else {
+      showToast('無法取得建議 ID，請手動輸入');
+    }
+  });
+
+  // 活動日期變動時自動更新 ID 欄位 placeholder 前綴
+  document.querySelector('#event-form [name=event_date]').addEventListener('change', function () {
+    const ym = dateToYm(this.value);
+    const idInput = document.getElementById('event-id-input');
+    if (ym && !idInput.value) {
+      idInput.placeholder = ym + '____';
+    }
+  });
+
   document.getElementById('event-form').addEventListener('submit', async e => {
     e.preventDefault();
     const form = e.target;
-    const id = form.id.value;
+    const id = form.id.value.trim();
+
+    // 新增時 ID 必填且格式正確
+    const isNew = !form.dataset.editId;
+    if (isNew) {
+      if (!id) { showToast('請填寫活動專案代號（YYYYMM+4碼）'); return; }
+      if (!EVENT_ID_RE.test(id)) { showToast('活動 ID 格式錯誤，應為 10 碼數字（如 2026040001）'); return; }
+    }
+
     const payload = {
       name: form.name.value.trim(),
       description: form.description.value.trim(),
@@ -158,9 +232,12 @@ function bindEventModal() {
         titles: csv(form.audience_titles.value),
       },
     };
+    if (isNew) payload.id = id;
+
+    showSavingOverlay('儲存活動中...');
     try {
-      if (id) {
-        await api('PUT', `/api/events/${encodeURIComponent(id)}`, payload);
+      if (!isNew) {
+        await api('PUT', `/api/events/${encodeURIComponent(form.dataset.editId)}`, payload);
         showToast('已更新');
       } else {
         await api('POST', '/api/events', payload);
@@ -170,6 +247,8 @@ function bindEventModal() {
       loadEvents();
     } catch (err) {
       showToast('儲存失敗：' + err.message);
+    } finally {
+      hideSavingOverlay();
     }
   });
 }
@@ -183,38 +262,59 @@ async function openEventModal(e, prefill) {
   // 填入 series 下拉
   await populateSeriesSelect(e?.series_id);
 
+  const idInput = document.getElementById('event-id-input');
+  const idHint  = document.getElementById('event-id-hint');
+  idHint.style.display = 'none';
+
   if (e) {
-    form.id.value = e.id;
-    form.name.value = e.name || '';
+    // 編輯模式：ID 唯讀（不可更改）
+    form.dataset.editId = e.id;
+    idInput.value    = e.id;
+    idInput.readOnly = true;
+    idInput.style.background = 'var(--bg-secondary)';
+    document.getElementById('btn-suggest-id').style.display = 'none';
+
+    form.name.value        = e.name || '';
     form.description.value = e.description || '';
-    form.event_date.value = e.event_date || '';
-    form.event_time.value = e.event_time || '';
-    form.location.value = e.location || '';
-    form.status.value = e.status || 'upcoming';
+    form.event_date.value  = e.event_date || '';
+    form.event_time.value  = e.event_time || '';
+    form.location.value    = e.location || '';
+    form.status.value      = e.status || 'upcoming';
     form.series_order.value = e.series_order || '';
     try {
       const ta = e.target_audience ? JSON.parse(e.target_audience) : {};
       form.audience_functions.value = (ta.functions || []).join(',');
-      form.audience_titles.value = (ta.titles || []).join(',');
+      form.audience_titles.value    = (ta.titles || []).join(',');
     } catch { /* noop */ }
   } else {
-    form.id.value = '';
+    // 新增模式：ID 可編輯
+    delete form.dataset.editId;
+    idInput.value    = '';
+    idInput.readOnly = false;
+    idInput.style.background = '';
+    idInput.placeholder = '2026040001';
+    document.getElementById('btn-suggest-id').style.display = '';
     form.status.value = 'upcoming';
   }
 
   // 來自 ingest 的預填值覆蓋
   if (prefill) {
-    if (prefill.name) form.name.value = prefill.name;
+    if (prefill.name)        form.name.value = prefill.name;
     if (prefill.description) form.description.value = prefill.description;
-    if (prefill.event_date) form.event_date.value = prefill.event_date;
-    if (prefill.event_time) form.event_time.value = prefill.event_time;
-    if (prefill.location) form.location.value = prefill.location;
+    if (prefill.event_date)  {
+      form.event_date.value = prefill.event_date;
+      // 自動更新 ID 欄位 placeholder 前綴
+      const ym = dateToYm(prefill.event_date);
+      if (ym) document.getElementById('event-id-input').placeholder = ym + '____';
+    }
+    if (prefill.event_time)  form.event_time.value = prefill.event_time;
+    if (prefill.location)    form.location.value = prefill.location;
     if (prefill.target_audience) {
       const ta = prefill.target_audience;
       form.audience_functions.value = (ta.functions || []).join(',');
-      form.audience_titles.value = (ta.titles || []).join(',');
+      form.audience_titles.value    = (ta.titles || []).join(',');
     }
-    if (prefill.series_id) form.series_id.value = prefill.series_id;
+    if (prefill.series_id)    form.series_id.value    = prefill.series_id;
     if (prefill.series_order) form.series_order.value = prefill.series_order;
   }
 
@@ -436,6 +536,7 @@ function bindSeriesModal() {
       description: form.description.value.trim(),
       status: form.status.value,
     };
+    showSavingOverlay(id ? '更新系列中...' : '建立系列中...');
     try {
       if (id) {
         await api('PUT', `/api/events/series/${encodeURIComponent(id)}`, payload);
@@ -449,6 +550,8 @@ function bindSeriesModal() {
       loadSeries();
     } catch (err) {
       showToast('儲存失敗：' + err.message);
+    } finally {
+      hideSavingOverlay();
     }
   });
 }
@@ -626,40 +729,38 @@ async function handleIngestConfirm() {
   const modal = document.getElementById('ingest-modal');
 
   if (pv.is_series && pv.sessions?.length > 0) {
-    // 建立系列 → 再批次建立各場次
+    // ── 系列活動：單次 batch 請求，不受 rate limit 影響 ──────────────────
+    modal.classList.remove('active');
+    showSavingOverlay(`建立系列「${pv.series_name || pv.name}」及 ${pv.sessions.length} 場次中，請勿關閉頁面...`);
     try {
-      const { series } = await api('POST', '/api/events/series', {
-        name: pv.series_name || pv.name,
-        description: pv.description || null,
-        status: 'active',
+      const { series, events } = await api('POST', '/api/events/batch', {
+        series: {
+          name: pv.series_name || pv.name,
+          description: pv.description || null,
+          status: 'active',
+        },
+        sessions: pv.sessions.map(s => ({
+          name: s.name,
+          description: s.description || pv.description || null,
+          event_date: s.event_date,
+          event_time: s.event_time || pv.event_time || null,
+          location: s.location || pv.location || null,
+          target_audience: pv.target_audience || null,
+        })),
       });
       state.series = []; // 清快取
-
-      // 建立各場次
-      let order = 1;
-      for (const s of pv.sessions) {
-        await api('POST', '/api/events', {
-          name: s.name || `${pv.name} 場次 ${order}`,
-          description: pv.description || null,
-          event_date: s.event_date,
-          event_time: s.event_time || pv.event_time,
-          location: s.location || pv.location,
-          status: 'upcoming',
-          series_id: series.id,
-          series_order: order,
-          target_audience: pv.target_audience,
-        });
-        order++;
-      }
-      modal.classList.remove('active');
-      showToast(`已建立系列「${series.name}」及 ${pv.sessions.length} 場次`);
+      showToast(`已建立系列「${series.name}」及 ${events.length} 場次`);
       loadEvents();
     } catch (err) {
       showToast('批次建立失敗：' + err.message);
+      // 重新開啟 modal 讓使用者可以重試
+      modal.classList.add('active');
+    } finally {
+      hideSavingOverlay();
     }
 
   } else {
-    // 單一活動 → 開啟 event-modal 預填
+    // ── 單一活動 → 開啟 event-modal 預填（讓使用者輸入 ID）────────────────
     modal.classList.remove('active');
     openEventModal(null, {
       name: pv.name,
