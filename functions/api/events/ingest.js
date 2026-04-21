@@ -18,7 +18,7 @@ const MIME_MAP = {
 };
 
 // Gemini 模型降級鏈（前者 quota 耗盡時自動嘗試後者）
-const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite'];
+const GEMINI_MODELS = ['gemini-flash-latest'];
 
 // ── Gemini 提取 Prompt ───────────────────────────────────────────────────────
 const PROMPT = `你是活動資訊解析專家。請從以下文件中提取活動相關資訊，以 JSON 格式回傳，不需要任何 markdown 包裝或程式碼區塊。
@@ -63,49 +63,72 @@ function isExcelDateSerial(val) {
   return s === String(n) && n >= 40179 && n <= 51545;
 }
 
-// ── ZIP 解壓（一次讀多個 entry）───────────────────────────────────────────────
+// ── ZIP 解壓（從 Central Directory 解析，支援 data descriptor 格式）─────────
+// 舊版從頭線性掃描 local headers，若檔案使用 data descriptor（bit flag 3）
+// 則 local header 中 compSz = 0，導致所有 entry 被跳過。
+// 新版先找 EOCD，再走訪 Central Directory（永遠儲存正確的 compSz）。
 async function readZipEntries(buffer, filterFn) {
   const bytes = new Uint8Array(buffer);
   const dv = new DataView(buffer);
   const result = {};
-  let i = 0;
 
-  while (i < bytes.length - 4) {
-    if (dv.getUint32(i, true) !== 0x04034b50) { i++; continue; }
+  // Step 1: 從末尾往前搜尋 EOCD signature 0x06054b50
+  // ZIP comment 最長 65535，加上固定 22 bytes = 最多搜 65558 bytes
+  let eocdPos = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65558); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocdPos = i; break; }
+  }
+  if (eocdPos < 0) return result;
 
-    const compression = dv.getUint16(i + 8, true);
-    const compSz      = dv.getUint32(i + 18, true);
-    const fnLen       = dv.getUint16(i + 26, true);
-    const exLen       = dv.getUint16(i + 28, true);
-    const dataStart   = i + 30 + fnLen + exLen;
-    const filename    = new TextDecoder().decode(bytes.slice(i + 30, i + 30 + fnLen));
+  const cdTotal  = dv.getUint16(eocdPos + 10, true); // 中央目錄條目總數
+  const cdOffset = dv.getUint32(eocdPos + 16, true); // 中央目錄起始 offset
+
+  // Step 2: 走訪 Central Directory records (signature 0x02014b50)
+  let pos = cdOffset;
+  for (let n = 0; n < cdTotal; n++) {
+    if (pos + 46 > bytes.length) break;
+    if (dv.getUint32(pos, true) !== 0x02014b50) break;
+
+    const compMethod  = dv.getUint16(pos + 10, true);
+    const compSz      = dv.getUint32(pos + 20, true); // 中央目錄的 compSz 永遠正確
+    const fnLen       = dv.getUint16(pos + 28, true);
+    const extraLen    = dv.getUint16(pos + 30, true);
+    const commentLen  = dv.getUint16(pos + 32, true);
+    const localHdrOff = dv.getUint32(pos + 42, true);
+    const filename    = new TextDecoder().decode(bytes.slice(pos + 46, pos + 46 + fnLen));
 
     if (filterFn(filename) && compSz > 0) {
-      const compressed = bytes.slice(dataStart, dataStart + compSz);
-      try {
-        let xmlBytes;
-        if (compression === 0) {
-          xmlBytes = compressed;
-        } else if (compression === 8) {
-          const ds = new DecompressionStream('deflate-raw');
-          const w = ds.writable.getWriter();
-          const r = ds.readable.getReader();
-          w.write(compressed); w.close();
-          const chunks = [];
-          while (true) { const { done, value } = await r.read(); if (done) break; chunks.push(value); }
-          const total = chunks.reduce((s, c) => s + c.length, 0);
-          xmlBytes = new Uint8Array(total);
-          let pos = 0;
-          for (const c of chunks) { xmlBytes.set(c, pos); pos += c.length; }
-        }
-        if (xmlBytes) {
-          result[filename] = new TextDecoder('utf-8', { fatal: false }).decode(xmlBytes);
-        }
-      } catch { /* 忽略 */ }
+      // Step 3: local header 的 extra field 長度可能與 CD 不同，要重新讀
+      const lhFnLen    = dv.getUint16(localHdrOff + 26, true);
+      const lhExtraLen = dv.getUint16(localHdrOff + 28, true);
+      const dataStart  = localHdrOff + 30 + lhFnLen + lhExtraLen;
+
+      if (dataStart + compSz <= bytes.length) {
+        const compressed = bytes.slice(dataStart, dataStart + compSz);
+        try {
+          let xmlBytes;
+          if (compMethod === 0) {
+            xmlBytes = compressed;                      // 未壓縮 (Stored)
+          } else if (compMethod === 8) {                // DEFLATE
+            const ds = new DecompressionStream('deflate-raw');
+            const w = ds.writable.getWriter();
+            const r = ds.readable.getReader();
+            w.write(compressed); w.close();
+            const chunks = [];
+            while (true) { const { done, value } = await r.read(); if (done) break; chunks.push(value); }
+            const total = chunks.reduce((s, c) => s + c.length, 0);
+            xmlBytes = new Uint8Array(total);
+            let p = 0;
+            for (const c of chunks) { xmlBytes.set(c, p); p += c.length; }
+          }
+          if (xmlBytes) {
+            result[filename] = new TextDecoder('utf-8', { fatal: false }).decode(xmlBytes);
+          }
+        } catch { /* 忽略解壓縮錯誤 */ }
+      }
     }
 
-    const next = dataStart + compSz;
-    i = next > i ? next : i + 1;
+    pos += 46 + fnLen + extraLen + commentLen;
   }
   return result;
 }
@@ -502,7 +525,9 @@ async function callGemini(apiKey, parts) {
 
         const cleaned = text.trim()
           .replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-        return JSON.parse(cleaned);
+        // Gemini 偶爾會將結果包在陣列中 [{...}] 而非物件 {...}，統一取第一個元素
+        const parsed = JSON.parse(cleaned);
+        return Array.isArray(parsed) ? (parsed[0] ?? {}) : parsed;
 
       } catch (e) {
         if (e.message.includes('429') || e.message.includes('Quota')) {

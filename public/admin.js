@@ -552,8 +552,10 @@ async function runIngest(file) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-    state.ingestPreview = data.preview;
-    showIngestPreview(data.preview, data.filename);
+    // 防禦性處理：後端（Gemini）偶爾回傳陣列 [{...}]，取第一個元素
+    const preview = Array.isArray(data.preview) ? (data.preview[0] ?? {}) : (data.preview ?? {});
+    state.ingestPreview = preview;
+    showIngestPreview(preview, data.filename);
     if (data.warning) {
       setTimeout(() => showToast('⚠️ ' + data.warning), 300);
     }
@@ -566,6 +568,15 @@ async function runIngest(file) {
 }
 
 function showIngestPreview(pv, filename) {
+  // 防禦性正規化：確保 pv 是物件（不是陣列）
+  if (Array.isArray(pv)) pv = pv[0] ?? {};
+  if (!pv || typeof pv !== 'object') {
+    document.getElementById('ingest-loading').style.display = 'none';
+    document.getElementById('ingest-error').style.display = 'block';
+    document.getElementById('ingest-error-msg').textContent = '解析結果格式錯誤，請重試';
+    return;
+  }
+
   document.getElementById('ingest-loading').style.display = 'none';
   document.getElementById('ingest-preview').style.display = 'block';
 
