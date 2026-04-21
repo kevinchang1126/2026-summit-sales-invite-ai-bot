@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理後台 — 鼎新年會邀約助手</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="admin.css">
+</head>
+
+<body>
+  <div id="auth-overlay" style="position:fixed;inset:0;background:#fff;display:flex;align-items:center;justify-content:center;z-index:9999;">
+    <p style="color:#666;">驗證中...</p>
+  </div>
+
+  <div id="admin-app" style="display:none;">
+    <header class="admin-header">
+      <div class="admin-header-inner">
+        <h1 class="admin-logo">管理後台</h1>
+        <div class="admin-user">
+          <span id="admin-name"></span>
+          <span class="role-badge" id="admin-role"></span>
+          <a href="/" class="btn-ghost">← 回前台</a>
+        </div>
+      </div>
+    </header>
+
+    <div class="admin-layout">
+      <aside class="admin-sidebar">
+        <nav>
+          <button class="side-nav active" data-view="events">活動管理</button>
+          <button class="side-nav superadmin-only" data-view="roles">權限管理</button>
+          <button class="side-nav" data-view="series">系列活動</button>
+          <button class="side-nav superadmin-only" data-view="tags" disabled title="Phase 3">標籤管理</button>
+          <button class="side-nav" data-view="resources" disabled title="Phase 3">資源管理</button>
+        </nav>
+      </aside>
+
+      <main class="admin-main">
+
+        <!-- ===== 活動管理 ===== -->
+        <section id="view-events" class="admin-view active">
+          <div class="view-head">
+            <h2>活動管理</h2>
+            <div style="display:flex;gap:8px;">
+              <button id="btn-ingest" class="btn-ghost">📎 從檔案匯入</button>
+              <button id="btn-new-event" class="btn-primary">+ 新增活動</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>活動名稱</th>
+                  <th>日期</th>
+                  <th>狀態</th>
+                  <th>建立者</th>
+                  <th style="width:140px;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="events-tbody">
+                <tr><td colspan="5" class="empty">載入中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ===== 系列活動 ===== -->
+        <section id="view-series" class="admin-view">
+          <div class="view-head">
+            <h2>系列活動</h2>
+            <button id="btn-new-series" class="btn-primary">+ 新增系列</button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>系列名稱</th>
+                  <th>場次數</th>
+                  <th>狀態</th>
+                  <th>建立者</th>
+                  <th style="width:140px;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="series-tbody">
+                <tr><td colspan="5" class="empty">載入中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ===== 權限管理 ===== -->
+        <section id="view-roles" class="admin-view">
+          <div class="view-head">
+            <h2>權限管理</h2>
+            <button id="btn-new-role" class="btn-primary">+ 指派角色</button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>使用者</th>
+                  <th>角色</th>
+                  <th>管理活動</th>
+                  <th>指派人</th>
+                  <th style="width:100px;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="roles-tbody">
+                <tr><td colspan="5" class="empty">載入中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+      </main>
+    </div>
+
+    <!-- ===== Modal：活動編輯 ===== -->
+    <div id="event-modal" class="modal">
+      <div class="modal-inner">
+        <h3 id="event-modal-title">新增活動</h3>
+        <form id="event-form">
+          <input type="hidden" name="id">
+          <div class="form-group">
+            <label>活動名稱 *</label>
+            <input type="text" name="name" required>
+          </div>
+          <div class="form-group">
+            <label>活動描述</label>
+            <textarea name="description" rows="3"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>活動日期 *</label>
+              <input type="date" name="event_date" required>
+            </div>
+            <div class="form-group">
+              <label>活動時間</label>
+              <input type="text" name="event_time" placeholder="例如 14:00-17:00">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>地點</label>
+            <input type="text" name="location">
+          </div>
+          <div class="form-group">
+            <label>推薦對象 — 職能（逗號分隔）</label>
+            <input type="text" name="audience_functions" placeholder="例如：企業主,資訊長">
+          </div>
+          <div class="form-group">
+            <label>推薦對象 — 職稱（逗號分隔）</label>
+            <input type="text" name="audience_titles" placeholder="例如：總經理,廠長">
+          </div>
+          <div class="form-group">
+            <label>狀態</label>
+            <select name="status">
+              <option value="upcoming">即將舉行</option>
+              <option value="ongoing">進行中</option>
+              <option value="ended">已結束</option>
+              <option value="archived">已封存</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>所屬系列（選填）</label>
+              <select name="series_id" id="event-series-select">
+                <option value="">— 無 —</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>系列場次順序</label>
+              <input type="number" name="series_order" min="1" placeholder="例如 1、2、3">
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn-ghost" data-close-modal>取消</button>
+            <button type="submit" class="btn-primary">儲存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ===== Modal：角色指派 ===== -->
+    <div id="role-modal" class="modal">
+      <div class="modal-inner">
+        <h3>指派角色</h3>
+        <form id="role-form">
+          <div class="form-group">
+            <label>搜尋使用者</label>
+            <input type="text" id="role-user-search" placeholder="輸入 user_code、姓名或暱稱">
+            <div id="role-user-list" class="user-search-list"></div>
+            <input type="hidden" name="user_code">
+            <div id="role-user-selected" style="margin-top:6px;color:var(--text-secondary);"></div>
+          </div>
+          <div class="form-group">
+            <label>角色</label>
+            <select name="role" id="role-select">
+              <option value="eventadmin">eventadmin（上傳活動資源）</option>
+              <option value="superadmin">superadmin（可管理所有人與活動）</option>
+            </select>
+          </div>
+          <div class="form-group" id="role-events-group">
+            <label>管理活動（eventadmin 必填）</label>
+            <div id="role-events-checklist" class="checklist"></div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn-ghost" data-close-modal>取消</button>
+            <button type="submit" class="btn-primary">確認指派</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ===== Modal：系列編輯 ===== -->
+    <div id="series-modal" class="modal">
+      <div class="modal-inner">
+        <h3 id="series-modal-title">新增系列活動</h3>
+        <form id="series-form">
+          <input type="hidden" name="id">
+          <div class="form-group">
+            <label>系列名稱 *</label>
+            <input type="text" name="name" required placeholder="例如：趨勢匯・製造業韌性企象系列">
+          </div>
+          <div class="form-group">
+            <label>系列說明</label>
+            <textarea name="description" rows="3" placeholder="系列主題、目標受眾、整體摘要..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>狀態</label>
+            <select name="status">
+              <option value="active">進行中</option>
+              <option value="ended">已結束</option>
+              <option value="archived">已封存</option>
+            </select>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn-ghost" data-close-modal>取消</button>
+            <button type="submit" class="btn-primary">儲存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ===== Modal：檔案匯入 ===== -->
+    <div id="ingest-modal" class="modal">
+      <div class="modal-inner" style="max-width:620px;">
+        <h3>從檔案匯入活動資訊</h3>
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:16px;">
+          支援：DOCX、PPTX、<strong>XLSX（自動轉 Markdown 表格）</strong>、PDF、HTML、MD、TXT、JPG、PNG（最大 15MB）
+        </p>
+
+        <!-- 上傳區 -->
+        <div id="ingest-drop" class="ingest-drop">
+          <div id="ingest-drop-text">
+            <span style="font-size:2rem;">📎</span><br>
+            拖曳檔案至此，或點擊選擇
+          </div>
+          <input type="file" id="ingest-file-input" accept=".docx,.pptx,.xlsx,.pdf,.html,.htm,.md,.txt,.jpg,.jpeg,.png" style="display:none;">
+        </div>
+
+        <!-- 解析中 -->
+        <div id="ingest-loading" style="display:none;text-align:center;padding:24px;">
+          <div class="spinner"></div>
+          <p style="margin-top:12px;color:var(--text-secondary);">Gemini 解析中，請稍候...</p>
+        </div>
+
+        <!-- 預覽結果 -->
+        <div id="ingest-preview" style="display:none;">
+          <div class="ingest-preview-header">
+            <span id="ingest-filename" style="font-weight:600;"></span>
+            <span id="ingest-series-badge" class="role-badge superadmin" style="display:none;">系列活動</span>
+          </div>
+
+          <div id="ingest-preview-single">
+            <div class="ingest-field-row"><span>名稱</span><strong id="pv-name">—</strong></div>
+            <div class="ingest-field-row"><span>日期</span><strong id="pv-date">—</strong></div>
+            <div class="ingest-field-row"><span>時間</span><strong id="pv-time">—</strong></div>
+            <div class="ingest-field-row"><span>地點</span><strong id="pv-location">—</strong></div>
+            <div class="ingest-field-row"><span>說明</span><strong id="pv-desc" style="white-space:pre-wrap;">—</strong></div>
+            <div class="ingest-field-row"><span>目標受眾</span><strong id="pv-audience">—</strong></div>
+          </div>
+
+          <div id="ingest-preview-series" style="display:none;">
+            <div class="ingest-field-row"><span>系列名稱</span><strong id="pv-series-name">—</strong></div>
+            <div style="margin-top:8px;font-size:0.85rem;color:var(--text-secondary);">場次列表：</div>
+            <div id="pv-sessions" class="ingest-sessions-list"></div>
+          </div>
+
+          <div class="modal-actions" style="margin-top:16px;">
+            <button type="button" class="btn-ghost" id="ingest-cancel">取消</button>
+            <button type="button" class="btn-ghost" id="ingest-retry">重新上傳</button>
+            <button type="button" class="btn-primary" id="ingest-confirm">建立活動</button>
+          </div>
+        </div>
+
+        <!-- 錯誤 -->
+        <div id="ingest-error" style="display:none;">
+          <p id="ingest-error-msg" style="color:var(--danger);"></p>
+          <div class="modal-actions">
+            <button type="button" class="btn-ghost" id="ingest-error-cancel">取消</button>
+            <button type="button" class="btn-ghost" id="ingest-error-retry">重新上傳</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+
+</html>

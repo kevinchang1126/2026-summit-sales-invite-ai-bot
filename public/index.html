@@ -30,7 +30,10 @@
     <!-- 頂部導覽 -->
   <header class="header">
     <div class="header-inner">
-      <h1 class="logo">鼎新年會<span>邀約助手</span></h1>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        <h1 class="logo">鼎新年會<span>邀約助手</span></h1>
+        <a id="btn-admin-entry" href="/admin.html" style="display:none; background:rgba(255,255,255,0.18); color:#fff; padding:6px 12px; border-radius:999px; font-size:0.78rem; text-decoration:none; font-weight:500; white-space:nowrap;">⚙️ 管理後台</a>
+      </div>
       <nav class="tabs">
         <button class="tab active" data-tab="generate">生成說帖</button>
         <button class="tab" data-tab="leaderboard">排行榜</button>

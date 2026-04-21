@@ -1,4 +1,6 @@
 // POST /api/auth — 讀取 Teams token 並轉發驗證
+import { getUserRole } from './_auth.js';
+
 export async function onRequestPost({ request, env }) {
   try {
     const { token } = await request.json();
@@ -50,10 +52,15 @@ export async function onRequestPost({ request, env }) {
       }
     }
 
+    // 取得角色（同時會自動 bootstrap 初始 superadmin）
+    const roleInfo = await getUserRole(env, userData.UserCode);
+
     return jsonResponse({
       ...userData,
       custom_nickname: customNickname,
-      display_name: finalNickname
+      display_name: finalNickname,
+      role: roleInfo?.role || null,
+      managed_event_ids: roleInfo?.managedEventIds || []
     });
   } catch (err) {
     return jsonResponse({ error: '伺服器內部錯誤：' + err.message }, 500);

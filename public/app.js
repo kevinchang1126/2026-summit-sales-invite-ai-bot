@@ -45,6 +45,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       localStorage.setItem('ad_name', data.UserName);
       localStorage.setItem('custom_nickname', data.custom_nickname || '');
       localStorage.setItem('display_name', data.display_name);
+      localStorage.setItem('role', data.role || '');
+      localStorage.setItem('managed_event_ids', JSON.stringify(data.managed_event_ids || []));
 
       window.history.replaceState({}, document.title, window.location.pathname);
       initApp();
@@ -82,6 +84,13 @@ function initApp(isDirectAccess = false) {
 
   document.getElementById('display-ad-name').textContent = localStorage.getItem('ad_name') || '';
   document.getElementById('custom-nickname-input').value = localStorage.getItem('custom_nickname') || '';
+
+  // 管理後台入口：superadmin / eventadmin 才顯示
+  const role = localStorage.getItem('role');
+  if (role === 'superadmin' || role === 'eventadmin') {
+    const btn = document.getElementById('btn-admin-entry');
+    if (btn) btn.style.display = 'inline-block';
+  }
 }
 
 // ===== Save Nickname =====
