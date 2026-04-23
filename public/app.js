@@ -69,6 +69,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       localStorage.setItem('ad_name', '直接造訪用戶');
       localStorage.setItem('custom_nickname', '');
       initApp(true); // 傳入 true 表示是未經 auth 的直接造訪
+    } else if (isLocalDev()) {
+      // 本地開發：以 /api/auth-dev 取代 Teams 驗證
+      const ok = await tryDevLogin();
+      if (ok) {
+        initApp();
+      } else {
+        authMessage.innerHTML = '本地開發登入取消或失敗';
+        authMessage.style.color = 'red';
+        document.querySelector('.spinner').style.display = 'none';
+        document.querySelector('#auth-overlay h2').textContent = '請重新整理頁面';
+      }
     } else {
       authMessage.innerHTML = '請由數智入口&gt;諾瓦Nova 進入活動邀約快手';
       authMessage.style.color = 'red';
@@ -77,6 +88,67 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 });
+
+// ===== Local Dev Login =====
+function isLocalDev() {
+  const h = window.location.hostname;
+  return h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0';
+}
+
+async function tryDevLogin() {
+  const saved = localStorage.getItem('dev_user_code') || '';
+  const input = prompt(
+    '🛠 本地開發登入\n\n請輸入欲模擬的 user_code（AD 帳號）\n可於 users / user_roles 表預先設定角色。',
+    saved || 'dev_user'
+  );
+  if (!input) return false;
+  const userCode = input.trim();
+  if (!userCode) return false;
+  localStorage.setItem('dev_user_code', userCode);
+
+  try {
+    const res = await fetch('/api/auth-dev', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_code: userCode, ad_name: userCode }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'dev 登入失敗');
+    localStorage.setItem('user_code',         data.UserCode);
+    localStorage.setItem('ad_name',           data.UserName);
+    localStorage.setItem('custom_nickname',   data.custom_nickname || '');
+    localStorage.setItem('display_name',      data.display_name);
+    localStorage.setItem('role',              data.role || '');
+    localStorage.setItem('managed_event_ids', JSON.stringify(data.managed_event_ids || []));
+    showDevBadge(userCode, data.role);
+    return true;
+  } catch (err) {
+    alert('🛠 DEV 登入失敗：' + err.message);
+    return false;
+  }
+}
+
+function showDevBadge(userCode, role) {
+  if (document.getElementById('dev-badge')) return;
+  const badge = document.createElement('div');
+  badge.id = 'dev-badge';
+  badge.textContent = `🛠 DEV: ${userCode}${role ? ' · ' + role : ''}`;
+  badge.title = '點我切換開發身分（清空 localStorage 並重新整理）';
+  badge.style.cssText = [
+    'position:fixed','top:4px','right:4px','z-index:9999',
+    'background:#f59e0b','color:#fff','padding:3px 8px',
+    'border-radius:999px','font-size:0.7rem','font-weight:600',
+    'cursor:pointer','box-shadow:0 2px 6px rgba(0,0,0,0.2)',
+    'letter-spacing:0.02em',
+  ].join(';');
+  badge.addEventListener('click', () => {
+    if (!confirm('🛠 清除登入資訊並重新整理？')) return;
+    ['user_code','ad_name','custom_nickname','display_name','role','managed_event_ids','dev_user_code']
+      .forEach(k => localStorage.removeItem(k));
+    location.reload();
+  });
+  document.body.appendChild(badge);
+}
 
 function initApp(isDirectAccess = false) {
   document.getElementById('auth-overlay').style.display = 'none';
@@ -90,6 +162,11 @@ function initApp(isDirectAccess = false) {
   if (role === 'superadmin' || role === 'eventadmin') {
     const btn = document.getElementById('btn-admin-entry');
     if (btn) btn.style.display = 'inline-block';
+  }
+
+  // 本地開發 badge（reload 後也要顯示）
+  if (isLocalDev() && localStorage.getItem('dev_user_code')) {
+    showDevBadge(localStorage.getItem('dev_user_code'), role);
   }
 }
 

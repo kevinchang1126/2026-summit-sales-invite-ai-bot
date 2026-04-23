@@ -6,7 +6,23 @@
       "Bash(python3 -m markitdown \"C:\\\\Users\\\\ertai\\\\OneDrive - digiwin.biz\\\\市場營銷處_張恕愷Kevin\\\\【專案】\\\\2026 製造年會\\\\2026鼎新企業高峰年會-邀約文件V4.pptx\")",
       "Bash(python3 -c \":*)",
       "Bash(npx wrangler:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(git -C \"C:\\\\Users\\\\ertai\\\\githubproject\\\\2026-summit-sales-invite-ai-bot\" log --oneline --all)",
+      "Bash(grep -E \"\\\\.js$\")",
+      "mcp__f57a7b33-4e1e-46f6-a05a-93a469f35cd1__accounts_list",
+      "mcp__f57a7b33-4e1e-46f6-a05a-93a469f35cd1__set_active_account",
+      "mcp__f57a7b33-4e1e-46f6-a05a-93a469f35cd1__r2_bucket_create",
+      "mcp__f57a7b33-4e1e-46f6-a05a-93a469f35cd1__d1_database_query",
+      "Bash(curl -s -o /dev/null http://127.0.0.1:8788/)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -u -c ' *)",
+      "Bash(python3 -c \"import sys; [print\\(line\\) for line in sys.stdin.buffer.read\\(\\).decode\\('utf-8','replace'\\).splitlines\\(\\)[:100]]\")",
+      "Bash(node --check \"C:\\\\Users\\\\ertai\\\\githubproject\\\\2026-summit-sales-invite-ai-bot\\\\functions\\\\api\\\\events\\\\ingest.js\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(node -e ' *)",
+      "Bash(xargs grep *)"
     ]
   }
 }

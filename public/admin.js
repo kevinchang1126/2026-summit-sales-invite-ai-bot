@@ -6,9 +6,12 @@ const state = {
   events: [],
   series: [],
   roles: [],
+  resources: [],
+  allTags: [],           // GET /api/tags 快取
   userSearchTimer: null,
   selectedUser: null,
   ingestPreview: null,   // 最近一次 Gemini 解析結果
+  resourceFile: null,    // 待上傳的 File 物件
 };
 
 // ------- Fetch helper -------
@@ -64,6 +67,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindRoleModal();
   bindSeriesModal();
   bindIngestModal();
+  bindResourceModal();
+  bindTagModal();
   loadEvents();
 });
 
@@ -77,9 +82,11 @@ function bindNav() {
       btn.classList.add('active');
       const v = btn.dataset.view;
       document.getElementById('view-' + v).classList.add('active');
-      if (v === 'roles') loadRoles();
-      if (v === 'events') loadEvents();
-      if (v === 'series') loadSeries();
+      if (v === 'roles')     loadRoles();
+      if (v === 'events')    loadEvents();
+      if (v === 'series')    loadSeries();
+      if (v === 'resources') loadResources();
+      if (v === 'tags')      loadTagsAdmin();
     });
   });
 }
@@ -113,12 +120,16 @@ function canManageEvent(eventId) {
 function renderEventRow(e) {
   const canEdit = canManageEvent(e.id);
   const canDelete = state.role === 'superadmin';
+  // 系列場次顯示「場次代號」，獨立活動顯示「活動ID（即專案代號）」
+  const codeDisplay = e.session_code
+    ? `場次代號：<code>${escapeHtml(e.session_code)}</code>`
+    : escapeHtml(e.id);
   return `
     <tr>
       <td>
         <strong>${escapeHtml(e.name)}</strong>
         ${e.series_name ? `<span style="font-size:0.75rem;background:#eff6ff;color:#1d4ed8;padding:1px 7px;border-radius:999px;margin-left:6px;">📋 ${escapeHtml(e.series_name)}</span>` : ''}
-        <br><small style="color:var(--text-secondary);">${e.id}</small>
+        <br><small style="color:var(--text-secondary);">${codeDisplay}</small>
       </td>
       <td>${e.event_date}${e.event_time ? '<br><small>' + escapeHtml(e.event_time) + '</small>' : ''}</td>
       <td><span class="status-chip ${e.status}">${statusLabel(e.status)}</span></td>
@@ -153,9 +164,11 @@ window.addEventListener('beforeunload', e => {
   }
 });
 
-// ─── 活動 ID 格式驗證 ────────────────────────────────────────────────────────
-// 活動專案代號由外部系統指派（YYYYMM+4碼），本平台只做格式卡控，不自動產生
+// ─── 格式驗證正規表達式 ────────────────────────────────────────────────────────
+// 活動專案代號（獨立活動 ID 或系列的 project_code）：YYYYMM+4碼，由外部系統指派
 const EVENT_ID_RE = /^20\d{2}(0[1-9]|1[0-2])\d{4}$/;
+// 場次代號（系列下各場次的地點代號）
+const SESSION_CODE_RE = /^(OT\d{2}|TH|U\d{2}|VAJ|\d{2,4}[A-Z]{0,2})$/i;
 
 function bindEventModal() {
   const modal = document.getElementById('event-modal');
@@ -174,33 +187,68 @@ function bindEventModal() {
     }
   });
 
+  // session_code 欄位即時格式驗證提示
+  document.getElementById('event-session-code-input').addEventListener('input', function () {
+    const err = document.getElementById('event-session-code-error');
+    const val = this.value.trim().toUpperCase();
+    if (!val || SESSION_CODE_RE.test(val)) {
+      err.style.display = 'none';
+    } else {
+      err.textContent = '格式錯誤（如 02、02A、999A、OT01、TH）';
+      err.style.display = 'block';
+    }
+  });
+
+  // 系列選取切換：有系列 → 顯示 session_code，無系列 → 顯示 id（活動專案代號）
+  document.getElementById('event-series-select').addEventListener('change', function () {
+    const hasSeries = !!this.value;
+    document.getElementById('event-id-group').style.display         = hasSeries ? 'none' : 'block';
+    document.getElementById('event-session-code-group').style.display = hasSeries ? 'block' : 'none';
+    const idInput = document.getElementById('event-id-input');
+    idInput.required         = !hasSeries;
+    document.getElementById('event-session-code-input').required = hasSeries;
+  });
+
   document.getElementById('event-form').addEventListener('submit', async e => {
     e.preventDefault();
     const form = e.target;
-    const id = form.id.value.trim();
-
-    // 新增時 ID 必填且格式正確
     const isNew = !form.dataset.editId;
-    if (isNew) {
-      if (!id) { showToast('請填寫活動專案代號（YYYYMM+4碼）'); return; }
-      if (!EVENT_ID_RE.test(id)) { showToast('活動 ID 格式錯誤，應為 10 碼數字（如 2026040001）'); return; }
+    const hasSeries = !!form.series_id.value;
+
+    if (hasSeries) {
+      // 系列場次：驗證 session_code
+      const sc = form.session_code.value.trim().toUpperCase();
+      if (isNew && !sc) { showToast('請填寫場次代號（如 02、999A）'); return; }
+      if (sc && !SESSION_CODE_RE.test(sc)) { showToast('場次代號格式錯誤（如 02、999A、OT01、TH）'); return; }
+    } else {
+      // 獨立活動：驗證活動專案代號 id
+      const id = form.id.value.trim();
+      if (isNew) {
+        if (!id) { showToast('請填寫活動專案代號（YYYYMM+4碼）'); return; }
+        if (!EVENT_ID_RE.test(id)) { showToast('活動 ID 格式錯誤，應為 10 碼數字（如 2026040001）'); return; }
+      }
     }
 
     const payload = {
-      name: form.name.value.trim(),
-      description: form.description.value.trim(),
-      event_date: form.event_date.value,
-      event_time: form.event_time.value.trim(),
-      location: form.location.value.trim(),
-      status: form.status.value,
-      series_id: form.series_id.value || null,
+      name:         form.name.value.trim(),
+      description:  form.description.value.trim(),
+      event_date:   form.event_date.value,
+      event_time:   form.event_time.value.trim(),
+      location:     form.location.value.trim(),
+      status:       form.status.value,
+      series_id:    form.series_id.value || null,
       series_order: form.series_order.value ? parseInt(form.series_order.value, 10) : null,
       target_audience: {
         functions: csv(form.audience_functions.value),
-        titles: csv(form.audience_titles.value),
+        titles:    csv(form.audience_titles.value),
       },
     };
-    if (isNew) payload.id = id;
+
+    if (hasSeries) {
+      payload.session_code = form.session_code.value.trim().toUpperCase() || undefined;
+    } else if (isNew) {
+      payload.id = form.id.value.trim();
+    }
 
     showSavingOverlay('儲存活動中...');
     try {
@@ -223,7 +271,7 @@ function bindEventModal() {
 
 async function openEventModal(e, prefill) {
   const modal = document.getElementById('event-modal');
-  const form = document.getElementById('event-form');
+  const form  = document.getElementById('event-form');
   form.reset();
   document.getElementById('event-modal-title').textContent = e ? '編輯活動' : '新增活動';
 
@@ -232,15 +280,34 @@ async function openEventModal(e, prefill) {
 
   const idInput = document.getElementById('event-id-input');
   const idErr   = document.getElementById('event-id-error');
+  const scInput = document.getElementById('event-session-code-input');
+  const scErr   = document.getElementById('event-session-code-error');
   if (idErr) idErr.style.display = 'none';
+  if (scErr) scErr.style.display = 'none';
 
   if (e) {
-    // 編輯模式：ID 唯讀（不可更改）
-    form.dataset.editId  = e.id;
-    idInput.value        = e.id;
-    idInput.readOnly     = true;
-    idInput.style.background = 'var(--bg-secondary, #f3f4f6)';
-    idInput.style.cursor = 'not-allowed';
+    // ── 編輯模式 ───────────────────────────────────────────────────────────
+    form.dataset.editId = e.id;
+
+    const hasSeries = !!e.series_id;
+
+    // id 欄位（獨立活動時顯示，唯讀）
+    document.getElementById('event-id-group').style.display          = hasSeries ? 'none' : 'block';
+    document.getElementById('event-session-code-group').style.display = hasSeries ? 'block' : 'none';
+
+    if (hasSeries) {
+      // 系列場次：顯示 session_code（唯讀）
+      scInput.value        = e.session_code || '';
+      scInput.readOnly     = true;
+      scInput.style.background = 'var(--bg-secondary, #f3f4f6)';
+      scInput.style.cursor = 'not-allowed';
+    } else {
+      // 獨立活動：顯示 id（唯讀）
+      idInput.value        = e.id;
+      idInput.readOnly     = true;
+      idInput.style.background = 'var(--bg-secondary, #f3f4f6)';
+      idInput.style.cursor = 'not-allowed';
+    }
 
     form.name.value         = e.name || '';
     form.description.value  = e.description || '';
@@ -254,14 +321,26 @@ async function openEventModal(e, prefill) {
       form.audience_functions.value = (ta.functions || []).join(',');
       form.audience_titles.value    = (ta.titles || []).join(',');
     } catch { /* noop */ }
+
   } else {
-    // 新增模式：ID 必填，人工輸入
+    // ── 新增模式 ───────────────────────────────────────────────────────────
     delete form.dataset.editId;
+
+    // 預設顯示 id 欄位（無系列時），選了系列後由 change 事件切換
+    document.getElementById('event-id-group').style.display          = 'block';
+    document.getElementById('event-session-code-group').style.display = 'none';
+
     idInput.value        = '';
     idInput.readOnly     = false;
     idInput.style.background = '';
     idInput.style.cursor = '';
     idInput.placeholder  = '請輸入活動專案代號（如 2026040001）';
+
+    scInput.value        = '';
+    scInput.readOnly     = false;
+    scInput.style.background = '';
+    scInput.style.cursor = '';
+
     form.status.value    = 'upcoming';
   }
 
@@ -269,7 +348,7 @@ async function openEventModal(e, prefill) {
   if (prefill) {
     if (prefill.name)        form.name.value = prefill.name;
     if (prefill.description) form.description.value = prefill.description;
-    if (prefill.event_date) form.event_date.value = prefill.event_date;
+    if (prefill.event_date)  form.event_date.value = prefill.event_date;
     if (prefill.event_time)  form.event_time.value = prefill.event_time;
     if (prefill.location)    form.location.value = prefill.location;
     if (prefill.target_audience) {
@@ -277,8 +356,14 @@ async function openEventModal(e, prefill) {
       form.audience_functions.value = (ta.functions || []).join(',');
       form.audience_titles.value    = (ta.titles || []).join(',');
     }
-    if (prefill.series_id)    form.series_id.value    = prefill.series_id;
+    if (prefill.series_id) {
+      form.series_id.value = prefill.series_id;
+      // 觸發切換邏輯
+      document.getElementById('event-id-group').style.display          = 'none';
+      document.getElementById('event-session-code-group').style.display = 'block';
+    }
     if (prefill.series_order) form.series_order.value = prefill.series_order;
+    if (prefill.session_code) scInput.value = prefill.session_code;
   }
 
   modal.classList.add('active');
@@ -471,9 +556,12 @@ async function loadSeries() {
 function renderSeriesRow(s) {
   const canDelete = state.role === 'superadmin';
   const statusMap = { active: '進行中', ended: '已結束', archived: '已封存' };
+  const codeLabel = s.project_code
+    ? `專案代號：<code>${escapeHtml(s.project_code)}</code>`
+    : `<span style="color:var(--danger);font-size:0.72rem;">⚠ 未設專案代號</span>`;
   return `
     <tr>
-      <td><strong>${escapeHtml(s.name)}</strong><br><small style="color:var(--text-secondary);">${s.id}</small></td>
+      <td><strong>${escapeHtml(s.name)}</strong><br><small style="color:var(--text-secondary);">${codeLabel}</small></td>
       <td style="text-align:center;">${s.event_count ?? 0} 場</td>
       <td><span class="status-chip ${s.status}">${statusMap[s.status] || s.status}</span></td>
       <td>${escapeHtml(s.created_by || '—')}</td>
@@ -490,15 +578,40 @@ function bindSeriesModal() {
   modal.querySelectorAll('[data-close-modal]').forEach(b => b.addEventListener('click', () => modal.classList.remove('active')));
   modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('active'); });
 
+  // project_code 即時驗證
+  document.getElementById('series-project-code-input').addEventListener('input', function () {
+    const err = document.getElementById('series-project-code-error');
+    if (!this.value || EVENT_ID_RE.test(this.value)) {
+      err.style.display = 'none';
+    } else {
+      err.textContent = '格式錯誤：應為 10 碼數字，YYYYMM+4碼（如 2026040001）';
+      err.style.display = 'block';
+    }
+  });
+
   document.getElementById('series-form').addEventListener('submit', async e => {
     e.preventDefault();
     const form = e.target;
-    const id = form.id.value;
+    const id = form.id.value; // 有值 = 編輯，空 = 新增
+
+    // project_code 驗證
+    const pcInput = document.getElementById('series-project-code-input');
+    const pc = pcInput.value.trim();
+    if (!id) {
+      // 新增：必填
+      if (!pc) { showToast('請填寫活動專案代號（YYYYMM+4碼）'); pcInput.focus(); return; }
+    }
+    if (pc && !EVENT_ID_RE.test(pc)) {
+      showToast('活動專案代號格式錯誤（應為 YYYYMM+4碼，如 2026040001）'); pcInput.focus(); return;
+    }
+
     const payload = {
-      name: form.name.value.trim(),
-      description: form.description.value.trim(),
-      status: form.status.value,
+      name:         form.name.value.trim(),
+      description:  form.description.value.trim(),
+      status:       form.status.value,
+      project_code: pc || undefined,
     };
+
     showSavingOverlay(id ? '更新系列中...' : '建立系列中...');
     try {
       if (id) {
@@ -520,18 +633,42 @@ function bindSeriesModal() {
 }
 
 function openSeriesModal(s) {
-  const modal = document.getElementById('series-modal');
-  const form = document.getElementById('series-form');
+  const modal   = document.getElementById('series-modal');
+  const form    = document.getElementById('series-form');
+  const pcInput = document.getElementById('series-project-code-input');
+  const pcErr   = document.getElementById('series-project-code-error');
   form.reset();
+  if (pcErr) pcErr.style.display = 'none';
   document.getElementById('series-modal-title').textContent = s ? '編輯系列活動' : '新增系列活動';
+
   if (s) {
-    form.id.value = s.id;
-    form.name.value = s.name || '';
+    form.id.value          = s.id;
+    form.name.value        = s.name || '';
     form.description.value = s.description || '';
-    form.status.value = s.status || 'active';
+    form.status.value      = s.status || 'active';
+
+    // 編輯時可以修改 project_code（例如初建時漏填），但仍允許留空（用 COALESCE 保留原值）
+    pcInput.value = s.project_code || '';
+    // 若已有 project_code，用唯讀提示（防止誤改），但允許修改
+    if (s.project_code) {
+      pcInput.readOnly          = true;
+      pcInput.title             = '如需更改活動專案代號，請聯絡 superadmin';
+      pcInput.style.background  = 'var(--bg-secondary, #f3f4f6)';
+      pcInput.style.cursor      = 'not-allowed';
+    } else {
+      pcInput.readOnly         = false;
+      pcInput.title            = '';
+      pcInput.style.background = '';
+      pcInput.style.cursor     = '';
+    }
   } else {
-    form.id.value = '';
-    form.status.value = 'active';
+    form.id.value          = '';
+    form.status.value      = 'active';
+    pcInput.value          = '';
+    pcInput.readOnly       = false;
+    pcInput.title          = '';
+    pcInput.style.background = '';
+    pcInput.style.cursor   = '';
   }
   modal.classList.add('active');
 }
@@ -656,30 +793,68 @@ function showIngestPreview(pv, filename) {
 
     document.getElementById('pv-series-name').textContent = pv.series_name || pv.name || '—';
 
+    // project_code 輸入欄（系列層級）
+    const seriesNameEl = document.getElementById('pv-series-name');
+    // 在系列名稱後插入 project_code 輸入（若不存在則建立）
+    let pcRow = document.getElementById('pv-project-code-row');
+    if (!pcRow) {
+      pcRow = document.createElement('div');
+      pcRow.id = 'pv-project-code-row';
+      pcRow.className = 'ingest-field-row';
+      pcRow.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
+      pcRow.innerHTML = `
+        <span>活動專案代號 <span style="color:var(--danger)">*</span></span>
+        <input type="text" id="pv-project-code-input"
+               maxlength="10" placeholder="2026040001"
+               style="font-family:monospace;letter-spacing:1px;font-size:0.85rem;padding:4px 8px;flex:1;max-width:180px;">
+        <span id="pv-project-code-err" style="color:var(--danger);font-size:0.75rem;display:none;">格式錯誤（YYYYMM+4碼）</span>`;
+      seriesNameEl.closest('.ingest-field-row').insertAdjacentElement('afterend', pcRow);
+    }
+    const pcInput = document.getElementById('pv-project-code-input');
+    pcInput.value = pv.project_code || '';
+    pcInput.oninput = function () {
+      const err = document.getElementById('pv-project-code-err');
+      err.style.display = (this.value && !EVENT_ID_RE.test(this.value)) ? 'inline' : 'none';
+    };
+
+    // 場次代號輸入（每場次）+ 地點參考
     const sessionList = document.getElementById('pv-sessions');
+    const locationGuide = `
+      <details style="margin-top:4px;font-size:0.74rem;color:var(--text-secondary);">
+        <summary style="cursor:pointer;">📍 場次代號參考</summary>
+        <div style="margin-top:4px;display:grid;grid-template-columns:repeat(3,1fr);gap:2px 12px;padding:6px;background:#f8fafc;border-radius:4px;line-height:1.7;">
+          <span>台北 <code>02~02W</code></span><span>桃園 <code>03~03F</code></span><span>新竹 <code>035~035E</code></span>
+          <span>台中 <code>04~04S</code></span><span>台南 <code>06~06D</code></span><span>高雄 <code>07~07C</code></span>
+          <span>線上 <code>999~999EA</code></span><span>OT <code>OT01~OT99</code></span><span>泰國 <code>TH</code></span>
+          <span>馬來西亞 <code>U01</code></span><span>越南 <code>VAJ</code></span><span style="color:#999;">更多見表單</span>
+        </div>
+      </details>`;
+
     sessionList.innerHTML = pv.sessions.map((s, i) =>
       `<div class="ingest-session-item">
         <strong>${escapeHtml(s.name || `場次 ${i + 1}`)}</strong>
         <span style="color:var(--text-secondary);font-size:0.8rem;margin-left:6px;">${s.event_date || ''} ${s.event_time || ''} ${s.location ? '📍 ' + escapeHtml(s.location) : ''}</span>
-        <div style="margin-top:6px;display:flex;align-items:center;gap:8px;">
-          <label style="font-size:0.8rem;white-space:nowrap;color:var(--text-secondary);">專案代號 <span style="color:var(--danger)">*</span></label>
+        <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <label style="font-size:0.8rem;white-space:nowrap;color:var(--text-secondary);">場次代號 <span style="color:var(--danger)">*</span></label>
           <input type="text"
-                 class="session-id-input"
+                 class="session-sc-input"
                  data-idx="${i}"
                  maxlength="10"
-                 placeholder="2026040001"
-                 value="${escapeHtml(s.id || '')}"
-                 style="font-family:monospace;letter-spacing:1px;font-size:0.85rem;padding:4px 8px;flex:1;max-width:160px;">
-          <span class="session-id-err" style="color:var(--danger);font-size:0.75rem;display:none;">格式錯誤</span>
+                 placeholder="如 02、999A、TH"
+                 value="${escapeHtml(s.session_code || '')}"
+                 style="font-family:monospace;letter-spacing:1px;font-size:0.85rem;padding:4px 8px;flex:1;max-width:140px;text-transform:uppercase;">
+          <span class="session-sc-err" style="color:var(--danger);font-size:0.75rem;display:none;">格式錯誤</span>
         </div>
+        ${i === 0 ? locationGuide : ''}
       </div>`
     ).join('');
 
     // 即時格式驗證
-    sessionList.querySelectorAll('.session-id-input').forEach(inp => {
+    sessionList.querySelectorAll('.session-sc-input').forEach(inp => {
       inp.addEventListener('input', function () {
-        const err = this.closest('.ingest-session-item').querySelector('.session-id-err');
-        err.style.display = (this.value && !EVENT_ID_RE.test(this.value)) ? 'inline' : 'none';
+        const err = this.closest('.ingest-session-item').querySelector('.session-sc-err');
+        const val = this.value.trim().toUpperCase();
+        err.style.display = (val && !SESSION_CODE_RE.test(val)) ? 'inline' : 'none';
       });
     });
 
@@ -711,58 +886,73 @@ async function handleIngestConfirm() {
   const modal = document.getElementById('ingest-modal');
 
   if (pv.is_series && pv.sessions?.length > 0) {
-    // ── 收集並驗證各場次 ID ───────────────────────────────────────────────
-    const idInputs = document.querySelectorAll('#pv-sessions .session-id-input');
-    const sessionIds = [];
+    // ── 驗證活動專案代號（series 層級）────────────────────────────────────
+    const pcInput = document.getElementById('pv-project-code-input');
+    const pcVal   = (pcInput?.value || '').trim();
+    if (!pcVal) {
+      document.getElementById('pv-project-code-err').style.display = 'inline';
+      showToast('請填寫活動專案代號（YYYYMM+4碼）');
+      return;
+    }
+    if (!EVENT_ID_RE.test(pcVal)) {
+      document.getElementById('pv-project-code-err').style.display = 'inline';
+      showToast('活動專案代號格式錯誤（應為 YYYYMM+4碼，如 2026040001）');
+      return;
+    }
+
+    // ── 收集並驗證各場次代號 ──────────────────────────────────────────────
+    const scInputs = document.querySelectorAll('#pv-sessions .session-sc-input');
+    const sessionCodes = [];
     let hasError = false;
 
-    idInputs.forEach((inp, i) => {
-      const val = inp.value.trim();
-      const err = inp.closest('.ingest-session-item').querySelector('.session-id-err');
+    scInputs.forEach((inp, i) => {
+      const val = inp.value.trim().toUpperCase();
+      const err = inp.closest('.ingest-session-item').querySelector('.session-sc-err');
       if (!val) {
         err.textContent = '必填'; err.style.display = 'inline'; hasError = true;
-      } else if (!EVENT_ID_RE.test(val)) {
+      } else if (!SESSION_CODE_RE.test(val)) {
         err.textContent = '格式錯誤'; err.style.display = 'inline'; hasError = true;
       } else {
         err.style.display = 'none';
       }
-      sessionIds[i] = val;
+      sessionCodes[i] = val;
     });
 
-    // 檢查重複 ID
+    // 檢查場次代號重複
     const seen = new Set();
-    sessionIds.forEach((id, i) => {
-      if (!id) return;
-      const inp = idInputs[i];
-      const err = inp.closest('.ingest-session-item').querySelector('.session-id-err');
-      if (seen.has(id)) {
+    sessionCodes.forEach((sc, i) => {
+      if (!sc) return;
+      const inp = scInputs[i];
+      const err = inp.closest('.ingest-session-item').querySelector('.session-sc-err');
+      if (seen.has(sc)) {
         err.textContent = '與其他場次重複'; err.style.display = 'inline'; hasError = true;
       }
-      seen.add(id);
+      seen.add(sc);
     });
 
     if (hasError) {
-      showToast('請填寫所有場次的活動專案代號（格式：YYYYMM+4碼）');
+      showToast('請填寫所有場次的場次代號（如 02、999A、TH）');
       return; // 不關 modal，讓使用者修正
     }
 
-    // ── 所有 ID 驗證通過 → 呼叫 batch 端點 ──────────────────────────────
+    // ── 所有驗證通過 → 呼叫 batch 端點 ───────────────────────────────────
     modal.classList.remove('active');
     showSavingOverlay(`建立系列「${pv.series_name || pv.name}」及 ${pv.sessions.length} 場次中，請勿關閉頁面...`);
     try {
       const { series, events } = await api('POST', '/api/events/batch', {
         series: {
-          name: pv.series_name || pv.name,
-          description: pv.description || null,
-          status: 'active',
+          name:         pv.series_name || pv.name,
+          description:  pv.description || null,
+          status:       'active',
+          project_code: pcVal,
         },
         sessions: pv.sessions.map((s, i) => ({
-          id: sessionIds[i],
-          name: s.name,
-          description: s.description || pv.description || null,
-          event_date: s.event_date,
-          event_time: s.event_time || pv.event_time || null,
-          location: s.location || pv.location || null,
+          session_code: sessionCodes[i],
+          name:         s.name,
+          description:  s.description || pv.description || null,
+          event_date:   s.event_date,
+          event_time:   s.event_time || pv.event_time || null,
+          location:     s.location || pv.location || null,
           target_audience: pv.target_audience || null,
         })),
       });
@@ -787,6 +977,457 @@ async function handleIngestConfirm() {
       location: pv.location,
       target_audience: pv.target_audience,
     });
+  }
+}
+
+// ===================================================================
+// ─── P3：資源管理 ──────────────────────────────────────────────────
+// ===================================================================
+
+// ── 標籤讀取（快取，所有模組共用）─────────────────────────────────────
+async function loadAllTags(force = false) {
+  if (!force && state.allTags.length > 0) return state.allTags;
+  try {
+    const { tags } = await api('GET', '/api/tags');
+    state.allTags = tags || [];
+  } catch { state.allTags = []; }
+  return state.allTags;
+}
+
+const TAG_CATEGORY_LABELS = {
+  resource_type: '資源類型',
+  industry:      '適用產業',
+  role:          '目標職務',
+  channel:       '通路',
+  scale:         '企業規模',
+  customer_type: '客戶類型',
+  session_pref:  '偏好場次',
+  custom:        '自訂',
+};
+
+// ── 渲染標籤核取清單（resource modal 用）─────────────────────────────
+function renderTagChecklist(tags, selectedIds = []) {
+  if (!tags.length) return '<p style="color:var(--text-secondary);font-size:0.85rem;">尚無標籤，請先在「標籤管理」新增</p>';
+
+  const grouped = {};
+  for (const t of tags) {
+    if (!grouped[t.category]) grouped[t.category] = [];
+    grouped[t.category].push(t);
+  }
+
+  return Object.entries(grouped).map(([cat, catTags]) => `
+    <div class="tag-group">
+      <div class="tag-group-label">${TAG_CATEGORY_LABELS[cat] || cat}</div>
+      <div class="tag-group-items">
+        ${catTags.map(t => `
+          <label class="tag-check">
+            <input type="checkbox" name="tag_ids" value="${escapeHtml(t.id)}"
+                   ${selectedIds.includes(t.id) ? 'checked' : ''}>
+            ${escapeHtml(t.name)}
+          </label>
+        `).join('')}
+      </div>
+    </div>`
+  ).join('');
+}
+
+// ── 資源列表 ─────────────────────────────────────────────────────────
+async function loadResources() {
+  const tbody     = document.getElementById('resources-tbody');
+  const eventSel  = document.getElementById('resource-filter-event');
+  const typeSel   = document.getElementById('resource-filter-type');
+
+  // 填事件篩選下拉
+  if (state.events.length === 0) {
+    try { const d = await api('GET', '/api/events'); state.events = d.events || []; } catch { /* noop */ }
+  }
+  const selectedEventId = eventSel.value;
+  eventSel.innerHTML = '<option value="">所有活動</option>'
+    + state.events.map(e =>
+        `<option value="${escapeHtml(e.id)}" ${e.id === selectedEventId ? 'selected' : ''}>${escapeHtml(e.name)}</option>`
+      ).join('');
+
+  tbody.innerHTML = '<tr><td colspan="6" class="empty">載入中...</td></tr>';
+
+  const params = new URLSearchParams();
+  if (eventSel.value) params.set('event_id', eventSel.value);
+  if (typeSel.value)  params.set('type', typeSel.value);
+
+  try {
+    const { resources } = await api('GET', `/api/resources?${params}`);
+    state.resources = resources || [];
+    if (!resources.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">沒有符合的資源</td></tr>';
+      return;
+    }
+    tbody.innerHTML = resources.map(r => renderResourceRow(r)).join('');
+    tbody.querySelectorAll('[data-edit-resource]').forEach(b =>
+      b.addEventListener('click', () => openResourceModal(state.resources.find(r => r.id === b.dataset.editResource))));
+    tbody.querySelectorAll('[data-delete-resource]').forEach(b =>
+      b.addEventListener('click', () => confirmDeleteResource(b.dataset.deleteResource)));
+    tbody.querySelectorAll('[data-download-resource]').forEach(b =>
+      b.addEventListener('click', () => downloadResource(b.dataset.downloadResource)));
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty">載入失敗：${e.message}</td></tr>`;
+  }
+}
+
+const RESOURCE_TYPE_LABELS = { slide: '投影片', video: '影片', article: '文章', other: '其他' };
+const RESOURCE_TYPE_ICONS  = { slide: '📊', video: '🎬', article: '📄', other: '📦' };
+
+function renderResourceRow(r) {
+  const canEdit = state.role === 'superadmin' || (state.managedEventIds || []).includes(r.event_id);
+  const storageIcon = r.storage_type === 'r2'
+    ? `<span title="上傳檔案" style="cursor:pointer;" data-download-resource="${r.id}">📥 ${escapeHtml(r.file_name || '檔案')}</span>`
+    : `<a href="${escapeHtml(r.url || '')}" target="_blank" rel="noopener" style="color:var(--primary);">🔗 連結</a>`;
+  const typeLabel = `${RESOURCE_TYPE_ICONS[r.resource_type] || ''}${RESOURCE_TYPE_LABELS[r.resource_type] || r.resource_type}`;
+  const tagChips = (r.tags || []).map(t =>
+    `<span class="role-badge" style="font-size:0.7rem;padding:1px 6px;">${escapeHtml(t.name)}</span>`
+  ).join(' ');
+
+  return `
+    <tr>
+      <td>
+        <strong>${escapeHtml(r.title)}</strong>
+        ${tagChips ? `<br>${tagChips}` : ''}
+      </td>
+      <td>${typeLabel}</td>
+      <td>${escapeHtml(r.event_name || r.event_id)}</td>
+      <td>${storageIcon}</td>
+      <td>${escapeHtml(r.uploaded_by || '—')}</td>
+      <td><div class="row-actions">
+        ${canEdit ? `<button class="btn-ghost" data-edit-resource="${escapeHtml(r.id)}">編輯</button>` : ''}
+        ${canEdit ? `<button class="btn-danger" data-delete-resource="${escapeHtml(r.id)}">刪除</button>` : ''}
+      </div></td>
+    </tr>`;
+}
+
+async function downloadResource(id) {
+  const resource = state.resources.find(r => r.id === id);
+  if (resource?.storage_type === 'link') {
+    window.open(resource.url, '_blank', 'noopener');
+    return;
+  }
+  // R2 檔案：用 fetch 帶 auth header，再轉成 blob URL 觸發下載
+  try {
+    showToast('準備下載中…');
+    const res = await fetch(`/api/resources/${encodeURIComponent(id)}?action=download`, {
+      headers: { 'X-User-Code': state.userCode },
+    });
+    if (!res.ok) { showToast('下載失敗：' + (await res.json().catch(() => ({}))).error || res.status); return; }
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = resource?.file_name || 'download';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  } catch (e) {
+    showToast('下載失敗：' + e.message);
+  }
+}
+
+async function confirmDeleteResource(id) {
+  const r = state.resources.find(x => x.id === id);
+  if (!confirm(`確定刪除資源「${r?.title}」？${r?.storage_type === 'r2' ? '\n（R2 上的檔案也會一併刪除）' : ''}`)) return;
+  try {
+    await api('DELETE', `/api/resources/${encodeURIComponent(id)}`);
+    showToast('已刪除資源');
+    loadResources();
+  } catch (err) {
+    showToast('刪除失敗：' + err.message);
+  }
+}
+
+// ── Resource Modal：綁定 ──────────────────────────────────────────────
+function bindResourceModal() {
+  const modal   = document.getElementById('resource-modal');
+  const dropZone = document.getElementById('resource-drop');
+  const fileInput = document.getElementById('resource-file-input');
+
+  document.getElementById('btn-new-resource').addEventListener('click', () => openResourceModal(null));
+  modal.querySelectorAll('[data-close-modal]').forEach(b => b.addEventListener('click', () => modal.classList.remove('active')));
+  modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('active'); });
+
+  // storage_type 切換
+  document.getElementById('resource-storage-type').addEventListener('change', function () {
+    const isFile = this.value === 'r2';
+    document.getElementById('resource-url-group').style.display  = isFile ? 'none'  : 'block';
+    document.getElementById('resource-file-group').style.display = isFile ? 'block' : 'none';
+    document.querySelector('#resource-form input[name=url]').required = !isFile;
+  });
+
+  // 篩選器觸發重載
+  document.getElementById('resource-filter-event').addEventListener('change', loadResources);
+  document.getElementById('resource-filter-type').addEventListener('change', loadResources);
+
+  // 拖曳 & 點擊上傳
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const f = e.dataTransfer.files?.[0];
+    if (f) selectResourceFile(f);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files?.[0]) selectResourceFile(fileInput.files[0]);
+  });
+
+  // 表單送出
+  document.getElementById('resource-form').addEventListener('submit', handleResourceSubmit);
+}
+
+function selectResourceFile(file) {
+  state.resourceFile = file;
+  const chosen = document.getElementById('resource-file-chosen');
+  chosen.textContent = `已選擇：${file.name}（${(file.size / 1024).toFixed(1)} KB）`;
+  chosen.style.display = 'block';
+  document.getElementById('resource-drop-text').innerHTML =
+    `<span style="font-size:1.5rem;">✅</span><br>${escapeHtml(file.name)}`;
+}
+
+async function openResourceModal(r) {
+  const modal = document.getElementById('resource-modal');
+  const form  = document.getElementById('resource-form');
+  form.reset();
+  state.resourceFile = null;
+  document.getElementById('resource-file-chosen').style.display = 'none';
+  document.getElementById('resource-drop-text').innerHTML = '<span style="font-size:1.5rem;">📎</span><br>拖曳檔案至此，或點擊選擇';
+  document.getElementById('resource-file-input').value = '';
+  document.getElementById('resource-modal-title').textContent = r ? '編輯資源' : '新增資源';
+
+  // 確保活動清單有資料
+  if (state.events.length === 0) {
+    try { const d = await api('GET', '/api/events'); state.events = d.events || []; } catch { /* noop */ }
+  }
+  const eventSel = document.getElementById('resource-event-select');
+  eventSel.innerHTML = '<option value="">— 選擇活動 —</option>'
+    + state.events.map(e =>
+        `<option value="${escapeHtml(e.id)}" ${r?.event_id === e.id ? 'selected' : ''}>${escapeHtml(e.name)}</option>`
+      ).join('');
+
+  // 載入標籤
+  const tags = await loadAllTags();
+
+  // 預載標籤選取狀態（編輯用）
+  let selectedTagIds = [];
+  if (r) {
+    try {
+      const { resource } = await api('GET', `/api/resources/${encodeURIComponent(r.id)}`);
+      selectedTagIds = (resource.tags || []).map(t => t.id);
+    } catch { /* noop */ }
+  }
+
+  document.getElementById('resource-tag-checklist').innerHTML = renderTagChecklist(tags, selectedTagIds);
+
+  // 儲存方式顯示控制
+  const storageTypeSel = document.getElementById('resource-storage-type');
+  const isFile = storageTypeSel.value === 'r2';
+  document.getElementById('resource-url-group').style.display  = isFile ? 'none'  : 'block';
+  document.getElementById('resource-file-group').style.display = isFile ? 'block' : 'none';
+
+  if (r) {
+    // 編輯模式
+    form.id.value          = r.id;
+    form.title.value       = r.title || '';
+    form.description.value = r.description || '';
+    form.resource_type.value = r.resource_type || 'slide';
+    storageTypeSel.value   = r.storage_type || 'link';
+    storageTypeSel.disabled = true; // 編輯時不允許切換儲存方式
+
+    // 重新觸發顯示邏輯
+    const isFileEdit = r.storage_type === 'r2';
+    document.getElementById('resource-url-group').style.display  = isFileEdit ? 'none'  : 'block';
+    document.getElementById('resource-file-group').style.display = isFileEdit ? 'block' : 'none';
+    if (!isFileEdit) form.url.value = r.url || '';
+
+    document.getElementById('resource-submit-btn').textContent = '更新';
+  } else {
+    form.id.value = '';
+    storageTypeSel.disabled = false;
+    document.getElementById('resource-submit-btn').textContent = '新增';
+  }
+
+  modal.classList.add('active');
+}
+
+async function handleResourceSubmit(e) {
+  e.preventDefault();
+  const form    = document.getElementById('resource-form');
+  const isEdit  = !!form.id.value;
+  const storageType = document.getElementById('resource-storage-type').value;
+  const tagIds = [...document.querySelectorAll('#resource-tag-checklist input[name=tag_ids]:checked')].map(i => i.value);
+  const modal = document.getElementById('resource-modal');
+
+  if (isEdit) {
+    // ── 編輯（JSON PUT）──────────────────────────────────────────────
+    const payload = {
+      title:         form.title.value.trim(),
+      description:   form.description.value.trim(),
+      resource_type: form.resource_type.value,
+      tags: tagIds,
+    };
+    showSavingOverlay('更新資源中...');
+    try {
+      await api('PUT', `/api/resources/${encodeURIComponent(form.id.value)}`, payload);
+      showToast('資源已更新');
+      modal.classList.remove('active');
+      loadResources();
+    } catch (err) {
+      showToast('更新失敗：' + err.message);
+    } finally {
+      hideSavingOverlay();
+    }
+
+  } else if (storageType === 'r2') {
+    // ── 新增檔案（multipart/form-data）──────────────────────────────
+    if (!state.resourceFile) { showToast('請選擇要上傳的檔案'); return; }
+    if (!form.event_id.value) { showToast('請選擇所屬活動'); return; }
+
+    const fd = new FormData();
+    fd.append('event_id',      form.event_id.value);
+    fd.append('title',         form.title.value.trim());
+    fd.append('description',   form.description.value.trim());
+    fd.append('resource_type', form.resource_type.value);
+    fd.append('tags',          tagIds.join(','));
+    fd.append('file',          state.resourceFile);
+
+    showSavingOverlay(`上傳「${state.resourceFile.name}」中，請勿關閉頁面...`);
+    try {
+      const res = await fetch('/api/resources', {
+        method: 'POST',
+        headers: { 'X-User-Code': state.userCode },
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      showToast('資源已上傳');
+      modal.classList.remove('active');
+      loadResources();
+    } catch (err) {
+      showToast('上傳失敗：' + err.message);
+    } finally {
+      hideSavingOverlay();
+    }
+
+  } else {
+    // ── 新增連結（JSON POST）─────────────────────────────────────────
+    if (!form.event_id.value) { showToast('請選擇所屬活動'); return; }
+    const payload = {
+      event_id:      form.event_id.value,
+      title:         form.title.value.trim(),
+      description:   form.description.value.trim(),
+      resource_type: form.resource_type.value,
+      storage_type:  'link',
+      url:           form.url.value.trim(),
+      tags: tagIds,
+    };
+    showSavingOverlay('儲存連結中...');
+    try {
+      await api('POST', '/api/resources', payload);
+      showToast('資源已新增');
+      modal.classList.remove('active');
+      loadResources();
+    } catch (err) {
+      showToast('新增失敗：' + err.message);
+    } finally {
+      hideSavingOverlay();
+    }
+  }
+}
+
+// ===================================================================
+// ─── P3：標籤管理（superadmin）──────────────────────────────────────
+// ===================================================================
+
+async function loadTagsAdmin() {
+  const panel = document.getElementById('tags-panel');
+  panel.innerHTML = '<p class="empty">載入中...</p>';
+  try {
+    const { tags } = await api('GET', '/api/admin/tags');
+    state.allTags = tags || []; // 同步更新快取
+
+    if (!tags.length) {
+      panel.innerHTML = '<p class="empty">尚無標籤，點右上「新增標籤」建立</p>';
+      return;
+    }
+
+    // 依 category 分組渲染
+    const grouped = {};
+    for (const t of tags) {
+      if (!grouped[t.category]) grouped[t.category] = [];
+      grouped[t.category].push(t);
+    }
+
+    panel.innerHTML = Object.entries(grouped).map(([cat, catTags]) => `
+      <div class="tag-category-section">
+        <div class="tag-category-header">
+          <span>${TAG_CATEGORY_LABELS[cat] || cat}</span>
+          <small style="color:var(--text-secondary);">${catTags.length} 個標籤</small>
+        </div>
+        <div class="tag-chips-admin">
+          ${catTags.map(t => `
+            <span class="tag-chip-admin">
+              ${escapeHtml(t.name)}
+              ${state.role === 'superadmin' ? `<button class="tag-chip-del" data-delete-tag="${escapeHtml(t.id)}" title="刪除">×</button>` : ''}
+            </span>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+
+    // 刪除按鈕
+    panel.querySelectorAll('[data-delete-tag]').forEach(b =>
+      b.addEventListener('click', () => confirmDeleteTag(b.dataset.deleteTag)));
+
+  } catch (e) {
+    panel.innerHTML = `<p class="empty">載入失敗：${e.message}</p>`;
+  }
+}
+
+function bindTagModal() {
+  const modal = document.getElementById('tag-modal');
+  document.getElementById('btn-new-tag').addEventListener('click', () => {
+    document.getElementById('tag-form').reset();
+    modal.classList.add('active');
+  });
+  modal.querySelectorAll('[data-close-modal]').forEach(b => b.addEventListener('click', () => modal.classList.remove('active')));
+  modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('active'); });
+
+  document.getElementById('tag-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const form = e.target;
+    const payload = {
+      category:   form.category.value,
+      name:       form.name.value.trim(),
+      sort_order: parseInt(form.sort_order.value, 10) || 0,
+    };
+    try {
+      await api('POST', '/api/admin/tags', payload);
+      showToast('標籤已新增');
+      modal.classList.remove('active');
+      state.allTags = []; // 清快取
+      loadTagsAdmin();
+    } catch (err) {
+      showToast('新增失敗：' + err.message);
+    }
+  });
+}
+
+async function confirmDeleteTag(id) {
+  const t = state.allTags.find(x => x.id === id);
+  if (!confirm(`確定刪除標籤「${t?.name}」？\n（已關聯的活動/資源標籤也會一併移除）`)) return;
+  try {
+    await api('DELETE', `/api/admin/tags/${encodeURIComponent(id)}`);
+    showToast('標籤已刪除');
+    state.allTags = [];
+    loadTagsAdmin();
+  } catch (err) {
+    showToast('刪除失敗：' + err.message);
   }
 }
 

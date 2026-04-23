@@ -47,37 +47,47 @@ CREATE TABLE IF NOT EXISTS rate_limits (
 -- Phase 1：活動資源中心 schema
 -- ============================================================
 
--- 系列活動（Migration 2025-04）
+-- 系列活動
+-- project_code：活動專案代號（YYYYMM+4碼），由外部系統指派，本平台格式卡控
 CREATE TABLE IF NOT EXISTS event_series (
-  id           TEXT    PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-  name         TEXT    NOT NULL,
-  description  TEXT,
+  id              TEXT    PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  name            TEXT    NOT NULL,
+  description     TEXT,
   cover_image_key TEXT,
-  status       TEXT    NOT NULL DEFAULT 'active' CHECK(status IN ('active','ended','archived')),
-  created_by   TEXT    NOT NULL,
-  created_at   INTEGER NOT NULL DEFAULT (unixepoch())
+  status          TEXT    NOT NULL DEFAULT 'active' CHECK(status IN ('active','ended','archived')),
+  project_code    TEXT,   -- YYYYMM+4碼，如 2026040001；UNIQUE WHERE NOT NULL
+  created_by      TEXT    NOT NULL,
+  created_at      INTEGER NOT NULL DEFAULT (unixepoch())
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_series_project_code
+  ON event_series(project_code) WHERE project_code IS NOT NULL;
 
 -- 活動主檔
+-- 獨立活動：id = 活動專案代號（YYYYMM+4碼）
+-- 系列場次：id = UUID，session_code = 地點代號（02/999A/TH…），series_id 指向所屬系列
 CREATE TABLE IF NOT EXISTS events (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  description TEXT,
+  id              TEXT    PRIMARY KEY,
+  name            TEXT    NOT NULL,
+  description     TEXT,
   target_audience TEXT,
-  event_date TEXT NOT NULL,
-  event_time TEXT,
-  location TEXT,
+  event_date      TEXT    NOT NULL,
+  event_time      TEXT,
+  location        TEXT,
   cover_image_key TEXT,
-  status TEXT NOT NULL DEFAULT 'upcoming' CHECK(status IN ('upcoming','ongoing','ended','archived')),
-  -- 系列欄位（Migration 2025-04）
-  series_id TEXT REFERENCES event_series(id) ON DELETE SET NULL,
-  series_order INTEGER,
-  created_by TEXT,
-  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+  status          TEXT    NOT NULL DEFAULT 'upcoming'
+                  CHECK(status IN ('upcoming','ongoing','ended','archived')),
+  series_id       TEXT    REFERENCES event_series(id) ON DELETE SET NULL,
+  series_order    INTEGER,
+  session_code    TEXT,   -- 場次地點代號（僅系列場次使用）
+  created_by      TEXT,
+  created_at      INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at      INTEGER NOT NULL DEFAULT (unixepoch())
 );
 CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
-CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date);
+CREATE INDEX IF NOT EXISTS idx_events_date   ON events(event_date);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_event_series_session
+  ON events(series_id, session_code)
+  WHERE series_id IS NOT NULL AND session_code IS NOT NULL;
 
 -- 資源（連結存 D1，檔案存 R2）
 CREATE TABLE IF NOT EXISTS resources (

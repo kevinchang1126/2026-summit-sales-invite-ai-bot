@@ -40,8 +40,8 @@
           <button class="side-nav active" data-view="events">活動管理</button>
           <button class="side-nav superadmin-only" data-view="roles">權限管理</button>
           <button class="side-nav" data-view="series">系列活動</button>
-          <button class="side-nav superadmin-only" data-view="tags" disabled title="Phase 3">標籤管理</button>
-          <button class="side-nav" data-view="resources" disabled title="Phase 3">資源管理</button>
+          <button class="side-nav superadmin-only" data-view="tags">標籤管理</button>
+          <button class="side-nav" data-view="resources">資源管理</button>
         </nav>
       </aside>
 
@@ -122,6 +122,55 @@
           </div>
         </section>
 
+        <!-- ===== 資源管理 ===== -->
+        <section id="view-resources" class="admin-view">
+          <div class="view-head">
+            <h2>資源管理</h2>
+            <button id="btn-new-resource" class="btn-primary">+ 新增資源</button>
+          </div>
+          <!-- 篩選列 -->
+          <div class="filter-row">
+            <select id="resource-filter-event">
+              <option value="">所有活動</option>
+            </select>
+            <select id="resource-filter-type">
+              <option value="">所有類型</option>
+              <option value="slide">投影片</option>
+              <option value="video">影片</option>
+              <option value="article">文章</option>
+              <option value="other">其他</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>資源標題</th>
+                  <th>類型</th>
+                  <th>所屬活動</th>
+                  <th>格式</th>
+                  <th>上傳者</th>
+                  <th style="width:140px;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="resources-tbody">
+                <tr><td colspan="6" class="empty">載入中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ===== 標籤管理 ===== -->
+        <section id="view-tags" class="admin-view">
+          <div class="view-head">
+            <h2>標籤管理</h2>
+            <button id="btn-new-tag" class="btn-primary superadmin-only">+ 新增標籤</button>
+          </div>
+          <div id="tags-panel">
+            <p class="empty">載入中...</p>
+          </div>
+        </section>
+
       </main>
     </div>
 
@@ -190,6 +239,33 @@
               <input type="number" name="series_order" min="1" placeholder="例如 1、2、3">
             </div>
           </div>
+          <!-- session_code 欄位（選擇系列後才顯示，取代 id 欄位的角色） -->
+          <div class="form-group" id="event-session-code-group" style="display:none;">
+            <label>場次代號 <span style="color:var(--danger)">*</span>
+              <small style="font-weight:400;color:var(--text-secondary);"> 依地點填寫，例如 02（台北）、999A（線上）、TH（泰國）</small>
+            </label>
+            <input type="text" name="session_code" id="event-session-code-input"
+                   maxlength="10" placeholder="例如 02、999A、OT01、TH"
+                   style="font-family:monospace;letter-spacing:1px;text-transform:uppercase;">
+            <div id="event-session-code-error" style="font-size:0.75rem;color:var(--danger);margin-top:4px;display:none;"></div>
+            <details style="margin-top:8px;font-size:0.78rem;color:var(--text-secondary);">
+              <summary style="cursor:pointer;user-select:none;">📍 場次代號參考表</summary>
+              <div style="margin-top:8px;display:grid;grid-template-columns:repeat(2,1fr);gap:4px 16px;padding:8px;background:#f8fafc;border-radius:6px;line-height:1.8;">
+                <span>台北 <code>02~02W</code></span><span>基隆 <code>024</code></span>
+                <span>桃園 <code>03~03F</code></span><span>新竹 <code>035~035E</code></span>
+                <span>苗栗 <code>037</code></span><span>花蓮 <code>038</code></span>
+                <span>宜蘭 <code>039</code></span><span>台中 <code>04~04S</code></span>
+                <span>彰化 <code>047</code></span><span>南投 <code>049~049G</code></span>
+                <span>嘉義 <code>05</code></span><span>雲林 <code>056</code></span>
+                <span>台南 <code>06~06D</code></span><span>澎湖 <code>069</code></span>
+                <span>高雄 <code>07~07C</code></span><span>屏東 <code>08</code></span>
+                <span>金門 <code>082</code></span><span>馬祖 <code>0836</code></span>
+                <span>台東 <code>089</code></span><span>線上 <code>999~999EA</code></span>
+                <span>OT活動 <code>OT01~OT99</code></span><span>泰國 <code>TH</code></span>
+                <span>馬來西亞 <code>U01</code></span><span>越南 <code>VAJ</code></span>
+              </div>
+            </details>
+          </div>
           <div class="modal-actions">
             <button type="button" class="btn-ghost" data-close-modal>取消</button>
             <button type="submit" class="btn-primary">儲存</button>
@@ -235,6 +311,15 @@
         <h3 id="series-modal-title">新增系列活動</h3>
         <form id="series-form">
           <input type="hidden" name="id">
+          <div class="form-group" id="series-project-code-group">
+            <label>活動專案代號 <span style="color:var(--danger)">*</span>
+              <small style="font-weight:400;color:var(--text-secondary);"> 格式 YYYYMM+4碼，例如 2026040001</small>
+            </label>
+            <input type="text" name="project_code" id="series-project-code-input"
+                   maxlength="10" placeholder="2026040001"
+                   style="font-family:monospace;letter-spacing:1px;">
+            <div id="series-project-code-error" style="font-size:0.75rem;color:var(--danger);margin-top:4px;display:none;"></div>
+          </div>
           <div class="form-group">
             <label>系列名稱 *</label>
             <input type="text" name="name" required placeholder="例如：趨勢匯・製造業韌性企象系列">
@@ -323,6 +408,115 @@
     </div>
 
     <div id="toast" class="toast"></div>
+
+    <!-- ===== Modal：資源新增 / 編輯 ===== -->
+    <div id="resource-modal" class="modal">
+      <div class="modal-inner" style="max-width:600px;">
+        <h3 id="resource-modal-title">新增資源</h3>
+        <form id="resource-form">
+          <input type="hidden" name="id">
+          <div class="form-group">
+            <label>所屬活動 <span style="color:var(--danger)">*</span></label>
+            <select name="event_id" id="resource-event-select" required></select>
+          </div>
+          <div class="form-group">
+            <label>資源標題 <span style="color:var(--danger)">*</span></label>
+            <input type="text" name="title" required placeholder="例如：2026 製造業高峰會 投影片">
+          </div>
+          <div class="form-group">
+            <label>資源說明</label>
+            <textarea name="description" rows="2" placeholder="補充說明（選填）"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>內容類型 <span style="color:var(--danger)">*</span></label>
+              <select name="resource_type" required>
+                <option value="slide">投影片</option>
+                <option value="video">影片 / 錄影</option>
+                <option value="article">文章 / 文件</option>
+                <option value="other">其他</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>儲存方式 <span style="color:var(--danger)">*</span></label>
+              <select name="storage_type" id="resource-storage-type">
+                <option value="link">外部連結</option>
+                <option value="r2">上傳檔案</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 連結輸入 -->
+          <div class="form-group" id="resource-url-group">
+            <label>外部連結 URL <span style="color:var(--danger)">*</span></label>
+            <input type="url" name="url" placeholder="https://...">
+          </div>
+
+          <!-- 檔案上傳 -->
+          <div class="form-group" id="resource-file-group" style="display:none;">
+            <label>上傳檔案 <span style="color:var(--danger)">*</span>
+              <small style="font-weight:400;color:var(--text-secondary);"> 最大 15MB</small>
+            </label>
+            <div id="resource-drop" class="ingest-drop" style="min-height:80px;">
+              <div id="resource-drop-text">
+                <span style="font-size:1.5rem;">📎</span><br>
+                拖曳檔案至此，或點擊選擇
+              </div>
+              <input type="file" id="resource-file-input"
+                     accept=".pdf,.pptx,.ppt,.xlsx,.xls,.docx,.doc,.jpg,.jpeg,.png,.mp4,.zip"
+                     style="display:none;">
+            </div>
+            <div id="resource-file-chosen" style="font-size:0.85rem;color:var(--text-secondary);margin-top:6px;display:none;"></div>
+          </div>
+
+          <!-- 標籤 -->
+          <div class="form-group">
+            <label>標籤（選填）</label>
+            <div id="resource-tag-checklist" class="resource-tag-checklist"></div>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn-ghost" data-close-modal>取消</button>
+            <button type="submit" class="btn-primary" id="resource-submit-btn">儲存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ===== Modal：標籤新增 ===== -->
+    <div id="tag-modal" class="modal">
+      <div class="modal-inner" style="max-width:440px;">
+        <h3>新增標籤</h3>
+        <form id="tag-form">
+          <div class="form-group">
+            <label>分類 <span style="color:var(--danger)">*</span></label>
+            <select name="category" required>
+              <option value="resource_type">資源類型</option>
+              <option value="industry">產業別</option>
+              <option value="role">職務別</option>
+              <option value="channel">通路</option>
+              <option value="scale">企業規模</option>
+              <option value="customer_type">客戶類型</option>
+              <option value="session_pref">偏好場次</option>
+              <option value="custom">自訂</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>標籤名稱 <span style="color:var(--danger)">*</span></label>
+            <input type="text" name="name" required placeholder="例如：製造業、CEO">
+          </div>
+          <div class="form-group">
+            <label>排序數字 <small style="font-weight:400;color:var(--text-secondary);">（數字越小越前）</small></label>
+            <input type="number" name="sort_order" value="0" min="0">
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn-ghost" data-close-modal>取消</button>
+            <button type="submit" class="btn-primary">新增</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
   </div>
 
   <script src="admin.js"></script>

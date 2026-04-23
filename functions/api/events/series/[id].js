@@ -1,5 +1,6 @@
 // /api/events/series/[id] — 單一系列的查詢、更新、刪除
 import { getUserCode, getUserRole, isSuperadmin, canManageEvent, jsonResponse, jsonError } from '../../_auth.js';
+import { PROJECT_CODE_REGEX } from './index.js';
 
 async function canManageSeries(env, userCode, seriesId) {
   // superadmin 可管理所有系列
@@ -45,17 +46,34 @@ export async function onRequestPut({ request, env, params }) {
   let body;
   try { body = await request.json(); } catch { return jsonError('JSON 格式錯誤', 400); }
 
-  const { name, description, cover_image_key, status } = body;
+  const { name, description, cover_image_key, status, project_code } = body;
   if (!name) return jsonError('name 為必填', 400);
 
   const validStatuses = ['active', 'ended', 'archived'];
   if (status && !validStatuses.includes(status)) return jsonError('無效的 status', 400);
 
-  await env.DB.prepare(
-    `UPDATE event_series
-     SET name = ?, description = ?, cover_image_key = ?, status = ?
-     WHERE id = ?`
-  ).bind(name, description || null, cover_image_key || null, status || 'active', params.id).run();
+  // project_code 若有提供，驗證格式
+  if (project_code !== undefined) {
+    const { PROJECT_CODE_REGEX } = await import('../index.js').catch(() => ({ PROJECT_CODE_REGEX: /^20\d{2}(0[1-9]|1[0-2])\d{4}$/ }));
+    if (project_code && !PROJECT_CODE_REGEX.test(project_code)) {
+      return jsonError('活動專案代號格式錯誤，應為 YYYYMM+4碼數字（如 2026040001）', 400);
+    }
+  }
+
+  try {
+    await env.DB.prepare(
+      `UPDATE event_series
+       SET name = ?, description = ?, cover_image_key = ?, status = ?,
+           project_code = COALESCE(?, project_code)
+       WHERE id = ?`
+    ).bind(name, description || null, cover_image_key || null, status || 'active',
+           project_code || null, params.id).run();
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) {
+      return jsonError(`活動專案代號 ${project_code} 已存在`, 409);
+    }
+    throw e;
+  }
 
   const updated = await env.DB.prepare('SELECT * FROM event_series WHERE id = ?')
     .bind(params.id).first();

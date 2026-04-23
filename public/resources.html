@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>2026 鼎新企業高峰年會 — 活動資源中心</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="resources.css">
+  <style>
+    #auth-overlay {
+      position: fixed; inset: 0; background: #fff; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; z-index: 9999;
+    }
+    #auth-overlay h2 { color: #333; margin-bottom: 10px; }
+    #auth-overlay p { color: #666; margin-bottom: 20px; text-align: center; padding: 0 20px; }
+  </style>
+</head>
+
+<body>
+  <!-- 驗證畫面 -->
+  <div id="auth-overlay">
+    <div class="spinner" style="width:40px;height:40px;border-width:4px;border-color:var(--primary) transparent transparent transparent;margin-bottom:20px;"></div>
+    <h2>身分驗證中...</h2>
+    <p id="auth-message">正在驗證您的身分，請稍候</p>
+  </div>
+
+  <div id="app-container" style="display:none;">
+    <!-- 頂部列 -->
+    <header class="header rc-header">
+      <div class="header-inner">
+        <div class="rc-header-row">
+          <a href="/" class="rc-back" aria-label="返回首頁">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+            返回
+          </a>
+          <h1 class="logo rc-title">📚 活動資源中心</h1>
+          <span class="rc-user" id="rc-user"></span>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <!-- ===== 篩選面板 ===== -->
+      <section class="card rc-filter">
+        <!-- 活動 + 數量 -->
+        <div class="rc-filter-row rc-filter-grid">
+          <div class="rc-filter-item">
+            <label for="filter-event">活動</label>
+            <select id="filter-event">
+              <option value="">全部顯示中活動</option>
+            </select>
+          </div>
+          <div class="rc-filter-item rc-filter-item-sm">
+            <label for="filter-event-count">範圍</label>
+            <select id="filter-event-count">
+              <option value="5" selected>最近 5 場</option>
+              <option value="10">最近 10 場</option>
+              <option value="20">最近 20 場</option>
+              <option value="all">全部活動</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 資源類型 -->
+        <div class="rc-filter-row">
+          <div class="rc-filter-head"><label>資源類型</label></div>
+          <div class="rc-chip-group" id="filter-type">
+            <button type="button" class="rc-chip active" data-type="">全部</button>
+            <button type="button" class="rc-chip" data-type="article">📄 文章</button>
+            <button type="button" class="rc-chip" data-type="slide">📊 簡報</button>
+            <button type="button" class="rc-chip" data-type="video">🎬 影片</button>
+            <button type="button" class="rc-chip" data-type="other">📎 其他</button>
+          </div>
+        </div>
+
+        <!-- 關鍵字 -->
+        <div class="rc-filter-row">
+          <label for="filter-keyword" class="rc-filter-head">關鍵字</label>
+          <input type="text" id="filter-keyword" placeholder="搜尋標題或說明" autocomplete="off">
+        </div>
+
+        <!-- 標籤 -->
+        <div class="rc-filter-row">
+          <div class="rc-filter-head">
+            <label>標籤</label>
+            <div class="rc-mode-toggle" role="radiogroup" aria-label="標籤匹配模式">
+              <button type="button" class="rc-mode-btn active" data-mode="or" id="mode-or" title="符合任一選中標籤即顯示">任一符合 (OR)</button>
+              <button type="button" class="rc-mode-btn" data-mode="and" id="mode-and" title="必須同時符合所有選中標籤">全部符合 (AND)</button>
+            </div>
+          </div>
+          <div id="filter-tags" class="rc-tag-groups">
+            <div class="loading-placeholder" style="padding:12px;">載入標籤中...</div>
+          </div>
+        </div>
+
+        <!-- 操作列 -->
+        <div class="rc-filter-row rc-filter-actions">
+          <span class="rc-result-count" id="rc-result-count"></span>
+          <button type="button" class="btn-secondary" id="btn-clear-filters">清除所有篩選</button>
+        </div>
+      </section>
+
+      <!-- ===== 資源列表 ===== -->
+      <section id="rc-list" class="rc-resource-list">
+        <div class="loading-placeholder">載入中...</div>
+      </section>
+    </main>
+
+    <!-- 年會資訊浮動按鈕 -->
+    <div class="fab-container">
+      <span class="fab-label">年會資訊</span>
+      <button class="fab" id="btn-info" title="年會資訊">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+      </button>
+    </div>
+
+    <!-- 年會資訊 Modal -->
+    <div class="modal-overlay" id="modal-info" style="display:none">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>2026 鼎新企業高峰年會</h2>
+          <button class="modal-close" id="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="event-theme">AI共生 跨出新競局</p>
+          <p class="event-subtitle">Agentic AI 重構企業新運行模式</p>
+
+          <div class="info-section">
+            <h3>場次資訊</h3>
+            <div class="info-row"><strong>台北場</strong> 4/16（四）13:00–17:00｜台北大直典華</div>
+            <div class="info-row"><strong>台中場</strong> 4/21（二）13:00–17:00｜台中金典酒店</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <script src="resources.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,28 @@
+=== sharedStrings ===
+[0] '【2026年製造業韌性轉型系列】趨勢下的生存與進化\r\nAI驅動的全球供應鏈避險實戰-從趨勢氣象預測到落地精準導航'
+[1] '議題主軸'
+[2] '線上企象預報'
+[3] '線下趨勢匯'
+[4] '活動\r\n日期'
+[5] '主題'
+[6] '地區'
+[7] '戰火動蕩\r\n壓力測試'
+[8] 'EP1.油價破百、海峽封鎖：您的企業還能撐多久？\r\n-2026美伊戰火直擊台灣製造業，揭秘3大逆境生存隱形指標。'
+[9] '\r\n【知聚】戰火動盪下的企業突圍：斷鏈、資金、需求三重壓力的生存決策\r\n企業撐下去靠的不是運氣，是你提前看懂了哪些關鍵指標？'
+[10] '臺北'
+[11] '高通膨下\r\n企業净利'
+[12] 'EP2.原料漲、工資漲、能源漲，你的淨利還剩幾成？\r\n-三面成本夾擊下，製造業護住淨利的關鍵不是砍預算，而是找對槓桿點。'
+[13] 'DRAM暴漲\r\n關鍵法則'
+[14] 'EP3.價格波動加劇、需求重組，企業用「這招」掌握節奏？\r\n-從DRAM漲勢出發，解析供需變化背後的關鍵判斷。'
+[15] '【知聚】AI算力需求引爆DRAM暴漲：用供需週期思維掌握關鍵零組件布局節奏\r\n拒絕被動挨打！從供需節奏到採購實戰：價格波動下的關鍵判斷與先手佈局。'
+[16] '台積供應鏈\r\n游戲規則'
+[17] 'EP4.供應鏈重組之下，企業如何找到關鍵定位？\r\n-解析台積供應鏈運作邏輯，掌握產業合作與競爭新模式。'
+[18] '【研討會】台積供應鏈生存戰：從認證門檻到長期合作的關鍵定位策略\r\n在供應鏈重組中贏得不可替代性！掌握供應鏈重組的長期定位策略！'
+[19] '待確'
+[20] '綠色法規\r\n碳數據治理'
+[21] 'EP5.碳數據不是法規問題，是下一張訂單能不能接的問題\r\n-綠色法規浪潮與AI碳數據治理雙軌並行——從被動合規進化為以綠色能力主動接單的競爭優勢。'
+[22] '【知聚】綠色法規浪潮下的碳數據治理：從被動合規到主動接單的競爭優勢\r\n別讓碳數據攔截你的訂單！從法規解讀到AI工具落地，拆解從合規到主動接單的實戰策略。'
+
+=== sheet1.xml (first 5000 chars) ===
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="x14ac xr xr2 xr3" xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac" xmlns:xr="http://schemas.microsoft.com/office/spreadsheetml/2014/revision" xmlns:xr2="http://schemas.microsoft.com/office/spreadsheetml/2015/revision2" xmlns:xr3="http://schemas.microsoft.com/office/spreadsheetml/2016/revision3" xr:uid="{A6B89433-B3A1-4A07-87C6-4DF052EC1981}"><dimension ref="A1:F8"/><sheetViews><sheetView tabSelected="1" workbookViewId="0"><selection sqref="A1:F8"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="16.5"/><sheetData><row r="1" spans="1:6"><c r="A1" s="1" t="s"><v>0</v></c><c r="B1" s="2"/><c r="C1" s="2"/><c r="D1" s="2"/><c r="E1" s="2"/><c r="F1" s="3"/></row><row r="2" spans="1:6" ht="18.75"><c r="A2" s="4" t="s"><v>1</v></c><c r="B2" s="5" t="s"><v>2</v></c><c r="C2" s="3"/><c r="D2" s="6" t="s"><v>3</v></c><c r="E2" s="2"/><c r="F2" s="3"/></row><row r="3" spans="1:6"><c r="A3" s="7"/><c r="B3" s="8" t="s"><v>4</v></c><c r="C3" s="9" t="s"><v>5</v></c><c r="D3" s="10" t="s"><v>4</v></c><c r="E3" s="11" t="s"><v>5</v></c><c r="F3" s="12" t="s"><v>6</v></c></row><row r="4" spans="1:6" ht="255"><c r="A4" s="13" t="s"><v>7</v></c><c r="B4" s="14"><v>46134</v></c><c r="C4" s="15" t="s"><v>8</v></c><c r="D4" s="16"><v>46162</v></c><c r="E4" s="15" t="s"><v>9</v></c><c r="F4" s="17" t="s"><v>10</v></c></row><row r="5" spans="1:6" ht="225"><c r="A5" s="13" t="s"><v>11</v></c><c r="B5" s="14"><v>46148</v></c><c r="C5" s="15" t="s"><v>12</v></c><c r="D5" s="18"/><c r="E5" s="19"/><c r="F5" s="19"/></row><row r="6" spans="1:6" ht="270"><c r="A6" s="13" t="s"><v>13</v></c><c r="B6" s="14"><v>46162</v></c><c r="C6" s="15" t="s"><v>14</v></c><c r="D6" s="16"><v>46169</v></c><c r="E6" s="15" t="s"><v>15</v></c><c r="F6" s="17" t="s"><v>10</v></c></row><row r="7" spans="1:6" ht="240"><c r="A7" s="13" t="s"><v>16</v></c><c r="B7" s="14"><v>46176</v></c><c r="C7" s="15" t="s"><v>17</v></c><c r="D7" s="16"><v>46190</v></c><c r="E7" s="15" t="s"><v>18</v></c><c r="F7" s="17" t="s"><v>19</v></c></row><row r="8" spans="1:6" ht="285"><c r="A8" s="13" t="s"><v>20</v></c><c r="B8" s="14"><v>46190</v></c><c r="C8" s="15" t="s"><v>21</v></c><c r="D8" s="20"><v>46211</v></c><c r="E8" s="15" t="s"><v>22</v></c><c r="F8" s="17" t="s"><v>19</v></c></row></sheetData><mergeCells count="4"><mergeCell ref="A1:F1"/><mergeCell ref="A2:A3"/><mergeCell ref="B2:C2"/><mergeCell ref="D2:F2"/></mergeCells><phoneticPr fontId="2" type="noConversion"/><pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>

@@ -27,7 +27,7 @@ export async function onRequestPut({ request, env, params }) {
   let body;
   try { body = await request.json(); } catch { return jsonError('JSON 格式錯誤', 400); }
 
-  const editable = ['name', 'description', 'target_audience', 'event_date', 'event_time', 'location', 'cover_image_key', 'status', 'series_id', 'series_order'];
+  const editable = ['name', 'description', 'target_audience', 'event_date', 'event_time', 'location', 'cover_image_key', 'status', 'series_id', 'series_order', 'session_code'];
   const updates = [];
   const binds = [];
   for (const f of editable) {
