@@ -1,3 +1,28 @@
 node_modules/
 .wrangler/
 .dev.vars
+
+# Claude Code 本機設定（含個人路徑）
+.claude/
+
+# HAR 流量錄製（含 auth token / session cookie，高度敏感）
+testhar/
+*.har
+
+# 開發除錯暫存檔
+scratch/
+*_debug.txt
+
+# Demo / 問卷樣本（可能含客戶資料）
+docs/*.xlsx
+
+# 壓縮包二進位檔
+docs/*.zip
+
+# AI 生成範例輸出（非原始碼）
+docs/generate/
+
+# 規劃與設計文件（非應用程式碼）
+PROJECT_PHASES.md
+batch_survey_import_implementation.md
+docs/P7_*.md
