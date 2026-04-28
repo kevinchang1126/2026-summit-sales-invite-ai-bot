@@ -2,6 +2,37 @@
 // Resources Center - Phase 4
 // ========================================================
 
+// ── PDF.js 預覽狀態 ────────────────────────────────────────────
+const _RPDFJSW = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+let _rPdfDoc = null, _rPdfPage = 1, _rPdfTotal = 0, _rPdfBusy = false, _rPdfQueued = null;
+
+async function _rPdfRender(n) {
+  if (!_rPdfDoc) return;
+  if (_rPdfBusy) { _rPdfQueued = n; return; }
+  _rPdfBusy = true;
+  _rPdfPage = n;
+  const info = document.getElementById('rc-pdf-page-info');
+  const prev = document.getElementById('rc-pdf-prev');
+  const next = document.getElementById('rc-pdf-next');
+  if (info) info.textContent = `${n} / ${_rPdfTotal}`;
+  if (prev) prev.disabled = n <= 1;
+  if (next) next.disabled = n >= _rPdfTotal;
+  const cont   = document.getElementById('rc-pdf-container');
+  const canvas = document.getElementById('rc-pdf-canvas');
+  const pg     = await _rPdfDoc.getPage(n);
+  const dpr    = Math.min(window.devicePixelRatio || 1, 2);
+  const w      = (cont.clientWidth || 360) - 16;
+  const nat    = pg.getViewport({ scale: 1 });
+  const vp     = pg.getViewport({ scale: (w / nat.width) * dpr });
+  canvas.width  = vp.width;
+  canvas.height = vp.height;
+  canvas.style.width  = `${w}px`;
+  canvas.style.height = `${Math.round(w * nat.height / nat.width)}px`;
+  await pg.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+  _rPdfBusy = false;
+  if (_rPdfQueued !== null) { const q = _rPdfQueued; _rPdfQueued = null; await _rPdfRender(q); }
+}
+
 // ===== Constants =====
 const CATEGORY_LABELS = {
   industry:      '產業',
@@ -237,15 +268,189 @@ function bindUI() {
   // 清除篩選
   document.getElementById('btn-clear-filters').addEventListener('click', clearAllFilters);
 
-  // 年會資訊 modal
-  const modal = document.getElementById('modal-info');
-  const btnInfo = document.getElementById('btn-info');
-  const btnClose = document.getElementById('modal-close');
-  if (btnInfo && modal) {
-    btnInfo.addEventListener('click', () => modal.style.display = 'flex');
-    btnClose?.addEventListener('click', () => modal.style.display = 'none');
-    modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
+  // ── 篩選欄 scroll 收合 ──────────────────────────────────────────────────
+  const filterEl   = document.querySelector('.rc-filter');
+  const filterBar  = document.getElementById('rc-filter-bar');
+  const barSummary = document.getElementById('rc-filter-bar-summary');
+  const barExpand  = document.getElementById('rc-filter-bar-expand');
+
+  function getFilterSummary() {
+    const parts = [];
+    const f = state.filters;
+    if (f.type)          parts.push({ article:'文章', slide:'簡報', video:'影片', other:'其他' }[f.type] || f.type);
+    if (f.keyword)       parts.push(`「${f.keyword}」`);
+    if (f.tagIds.length) parts.push(`標籤 ×${f.tagIds.length}`);
+    const countLabel = f.count === 'all' ? '全部活動' : `最近 ${f.count} 場`;
+    return parts.length ? `${countLabel} · ${parts.join(' · ')}` : countLabel;
   }
+
+  // ── 架構說明 ────────────────────────────────────────────────────────────
+  // filter 永遠保持原始高度在 document flow 中，不做任何 collapse 動畫。
+  // 只用 IntersectionObserver 觀察 filter 是否還在 viewport 內：
+  //   - 不在 → 顯示固定提示列（不改變任何 DOM 高度，scrollY 不受影響）
+  //   - 在   → 隱藏提示列
+  // 完全消除收合/展開造成的 layout shift → scrollY 變化 → 再觸發的振盪迴圈。
+
+  const headerEl = document.querySelector('.rc-header');
+
+  function getHeaderH() {
+    return headerEl ? headerEl.getBoundingClientRect().height : 0;
+  }
+
+  function positionFilterBar() {
+    filterBar.style.top = `${getHeaderH()}px`;
+  }
+  positionFilterBar();
+  window.addEventListener('resize', positionFilterBar, { passive: true });
+
+  function showFilterBar() {
+    barSummary.textContent = getFilterSummary();
+    filterBar.style.display = 'flex';
+  }
+  function hideFilterBar() {
+    filterBar.style.display = 'none';
+  }
+
+  // 觀察 filter 元素本身是否還在 viewport（扣除 header 高度）
+  let filterObserver = null;
+  function setupFilterObserver() {
+    if (filterObserver) filterObserver.disconnect();
+    const hh = Math.ceil(getHeaderH());
+    filterObserver = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          hideFilterBar();
+        } else {
+          showFilterBar();
+        }
+      },
+      { threshold: 0, rootMargin: `-${hh}px 0px 0px 0px` }
+    );
+    filterObserver.observe(filterEl);
+  }
+  setupFilterObserver();
+  // resize 時 header 高度可能改變，重建 observer
+  window.addEventListener('resize', setupFilterObserver, { passive: true });
+
+  barExpand?.addEventListener('click', () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  // ── 預覽 Modal ──────────────────────────────────────────────────────────
+  const previewOverlay  = document.getElementById('rc-preview-modal');
+  const previewClose    = document.getElementById('rc-preview-close');
+  const previewDownload = document.getElementById('rc-preview-download');
+  let _previewResourceId = null;
+
+  function closePreview() {
+    previewOverlay.style.display = 'none';
+    const iframe   = document.getElementById('rc-preview-iframe');
+    const img      = document.getElementById('rc-preview-img');
+    const video    = document.getElementById('rc-preview-video');
+    const pdfCont  = document.getElementById('rc-pdf-container');
+    const pdfCtrl  = document.getElementById('rc-pdf-controls');
+    const body     = document.getElementById('rc-preview-body');
+    iframe.src = ''; img.src = ''; video.src = '';
+    iframe.style.display = img.style.display = video.style.display = 'none';
+    if (pdfCont) pdfCont.style.display = 'none';
+    if (pdfCtrl) pdfCtrl.style.display = 'none';
+    if (body)    body.classList.remove('pdf-active');
+    document.getElementById('rc-preview-loading').style.display    = 'flex';
+    document.getElementById('rc-preview-unsupported').style.display = 'none';
+    _previewResourceId = null;
+    _rPdfDoc = null; _rPdfBusy = false; _rPdfQueued = null;
+  }
+
+  previewClose?.addEventListener('click', closePreview);
+  previewOverlay?.addEventListener('click', (e) => { if (e.target === previewOverlay) closePreview(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePreview(); });
+
+  // PDF 頁面切換
+  document.getElementById('rc-pdf-prev')?.addEventListener('click', async () => {
+    if (_rPdfPage > 1) await _rPdfRender(_rPdfPage - 1);
+  });
+  document.getElementById('rc-pdf-next')?.addEventListener('click', async () => {
+    if (_rPdfPage < _rPdfTotal) await _rPdfRender(_rPdfPage + 1);
+  });
+
+  previewDownload?.addEventListener('click', () => {
+    if (_previewResourceId) downloadResource(_previewResourceId);
+  });
+
+  window._openPreview = async function(id) {
+    const r = state.resources.find(x => x.id === id);
+    if (!r) return;
+    _previewResourceId = id;
+    previewOverlay.style.display = 'flex';
+    document.getElementById('rc-preview-title').textContent = r.title || r.file_name || '';
+
+    // 連結類型 → 直接新分頁開啟，不做 modal
+    if (r.storage_type === 'link') {
+      closePreview();
+      window.open(r.url, '_blank', 'noopener');
+      return;
+    }
+
+    // 重置 loading 狀態
+    document.getElementById('rc-preview-loading').style.display    = 'flex';
+    document.getElementById('rc-preview-unsupported').style.display = 'none';
+    const iframe = document.getElementById('rc-preview-iframe');
+    const img    = document.getElementById('rc-preview-img');
+    const video  = document.getElementById('rc-preview-video');
+    iframe.style.display = img.style.display = video.style.display = 'none';
+
+    const mime = r.mime_type || '';
+    const uc = encodeURIComponent(state.userCode || '');
+    const previewUrl = `/api/resources/${encodeURIComponent(id)}?action=preview&uc=${uc}`;
+
+    if (mime === 'application/pdf') {
+      // PDF → PDF.js（支援 iOS Safari）
+      const pdfCont = document.getElementById('rc-pdf-container');
+      const pdfCtrl = document.getElementById('rc-pdf-controls');
+      const body    = document.getElementById('rc-preview-body');
+      _rPdfDoc = null; _rPdfBusy = false; _rPdfQueued = null;
+      if (window.pdfjsLib) {
+        try {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = _RPDFJSW;
+          const task = window.pdfjsLib.getDocument({ url: previewUrl });
+          _rPdfDoc   = await task.promise;
+          _rPdfTotal = _rPdfDoc.numPages;
+          document.getElementById('rc-preview-loading').style.display = 'none';
+          pdfCont.style.display = 'block';
+          body.classList.add('pdf-active');
+          if (_rPdfTotal > 1) pdfCtrl.style.display = 'flex';
+          await _rPdfRender(1);
+        } catch (e) {
+          console.warn('PDF.js failed, iframe fallback:', e);
+          document.getElementById('rc-preview-loading').style.display = 'none';
+          iframe.src = previewUrl;
+          iframe.style.display = 'block';
+        }
+      } else {
+        // PDF.js 未載入 → iframe fallback
+        iframe.onload = () => { document.getElementById('rc-preview-loading').style.display = 'none'; };
+        iframe.src = previewUrl;
+        iframe.style.display = 'block';
+      }
+    } else if (mime.startsWith('text/')) {
+      // 純文字 → iframe
+      iframe.onload = () => { document.getElementById('rc-preview-loading').style.display = 'none'; };
+      iframe.src = previewUrl;
+      iframe.style.display = 'block';
+    } else if (mime.startsWith('image/')) {
+      img.onload = () => { document.getElementById('rc-preview-loading').style.display = 'none'; };
+      img.src = previewUrl;
+      img.style.display = 'block';
+    } else if (mime.startsWith('video/')) {
+      video.src = previewUrl;
+      video.style.display = 'block';
+      document.getElementById('rc-preview-loading').style.display = 'none';
+    } else {
+      // 不支援預覽格式
+      document.getElementById('rc-preview-loading').style.display    = 'none';
+      document.getElementById('rc-preview-unsupported').style.display = 'flex';
+    }
+  };
 }
 
 function setMode(mode) {
@@ -434,7 +639,7 @@ function render() {
     btn.addEventListener('click', () => {
       const id = btn.dataset.id;
       const action = btn.dataset.action;
-      if (action === 'view')     viewResource(id);
+      if (action === 'view')     window._openPreview(id);
       if (action === 'download') downloadResource(id);
     });
   });

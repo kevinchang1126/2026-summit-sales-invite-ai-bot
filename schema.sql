@@ -22,8 +22,14 @@ CREATE TABLE IF NOT EXISTS pitches (
   author TEXT DEFAULT '匿名業務',
   likes INTEGER DEFAULT 0,
   dislikes INTEGER DEFAULT 0,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT (datetime('now')),
+  customer_code TEXT,        -- 潛客代號（關聯 survey_responses）
+  company_name  TEXT,        -- 客戶全名（冗餘欄，避免 JOIN）
+  contact_name  TEXT,        -- 聯絡人姓名（bulk_generated 時對應具體自然人）
+  pitch_type    TEXT DEFAULT 'invite'  -- invite | follow_up | bulk_generated
 );
+CREATE INDEX IF NOT EXISTS idx_pitches_customer ON pitches(customer_code);
+CREATE INDEX IF NOT EXISTS idx_pitches_type     ON pitches(pitch_type);
 
 -- 投票記錄（防重複投票）
 CREATE TABLE IF NOT EXISTS votes (
@@ -147,3 +153,46 @@ CREATE TABLE IF NOT EXISTS event_admins (
   PRIMARY KEY (user_code, event_id),
   FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
 );
+
+-- ============================================================
+-- Phase 2：客戶問卷資料 schema
+-- ============================================================
+
+-- 客戶問卷回覆（批量匯入自 XLSX）
+CREATE TABLE IF NOT EXISTS survey_responses (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_code    TEXT    NOT NULL,       -- 潛客代號
+  company_name     TEXT,                  -- 客戶全名
+  contact_name     TEXT,                  -- 客戶姓名
+  department       TEXT,
+  job_title        TEXT,
+  job_function     TEXT,                  -- 職能
+  event_date       TEXT,                  -- 活動日期 (YYYYMMDD or YYYY-MM-DD)
+  session_name     TEXT,                  -- 場次（如 台北-製造）
+  serial_no        TEXT,                  -- 序號
+  ac_code          TEXT,                  -- AC規劃師工號
+  ac_name          TEXT,                  -- AC規劃師姓名
+  ac_dept          TEXT,                  -- AC規劃師部門
+  attended         INTEGER DEFAULT 0,     -- 實到否 1=Y, 0=N
+  has_survey       INTEGER DEFAULT 0,     -- 問卷否 1=Y, 0=N
+  industry_type    TEXT NOT NULL CHECK(industry_type IN ('manufacturing','retail')),
+  -- 問卷訊號（JSON array of signal codes, e.g. ["Q1_ARRANGE","Q8_BUDGET"]）
+  signals          TEXT DEFAULT '[]',
+  -- 原始答題 bits（JSON array，依欄位順序 0/1/null）
+  q1_raw           TEXT DEFAULT '[]',
+  q4_raw           TEXT DEFAULT '[]',
+  q5_raw           TEXT DEFAULT '[]',
+  q6_raw           TEXT DEFAULT '[]',
+  q7_raw           TEXT DEFAULT '[]',
+  q8_raw           TEXT DEFAULT '[]',
+  imported_by      TEXT,
+  imported_at      TEXT DEFAULT (datetime('now')),
+  UNIQUE(customer_code, contact_name, event_date, session_name)
+);
+CREATE INDEX IF NOT EXISTS idx_survey_customer ON survey_responses(customer_code);
+CREATE INDEX IF NOT EXISTS idx_survey_company  ON survey_responses(company_name);
+CREATE INDEX IF NOT EXISTS idx_survey_ac       ON survey_responses(ac_code);
+
+-- 注意：pitches 表的 customer_code / company_name / pitch_type 欄位
+-- 已於 2026-04-27 透過 ALTER TABLE 加入正式環境，此處 CREATE TABLE 定義已同步更新。
+

@@ -69,6 +69,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindIngestModal();
   bindResourceModal();
   bindTagModal();
+  bindSurveyModal();
+  bindSurveyEditModal();
   loadEvents();
 });
 
@@ -87,6 +89,7 @@ function bindNav() {
       if (v === 'series')    loadSeries();
       if (v === 'resources') loadResources();
       if (v === 'tags')      loadTagsAdmin();
+      if (v === 'survey')    loadSurveyList();
     });
   });
 }
@@ -1243,7 +1246,12 @@ async function openResourceModal(r) {
     const isFileEdit = r.storage_type === 'r2';
     document.getElementById('resource-url-group').style.display  = isFileEdit ? 'none'  : 'block';
     document.getElementById('resource-file-group').style.display = isFileEdit ? 'block' : 'none';
-    if (!isFileEdit) form.url.value = r.url || '';
+    if (!isFileEdit) {
+      form.url.value = r.url || '';
+    } else {
+      document.getElementById('resource-drop-text').innerHTML =
+        `<span style="font-size:1.5rem;">📄</span><br>目前：<strong>${escapeHtml(r.file_name || '未知檔案')}</strong><br><small style="color:var(--text-secondary);">選擇新檔案以替換</small>`;
+    }
 
     document.getElementById('resource-submit-btn').textContent = '更新';
   } else {
@@ -1264,23 +1272,51 @@ async function handleResourceSubmit(e) {
   const modal = document.getElementById('resource-modal');
 
   if (isEdit) {
-    // ── 編輯（JSON PUT）──────────────────────────────────────────────
-    const payload = {
-      title:         form.title.value.trim(),
-      description:   form.description.value.trim(),
-      resource_type: form.resource_type.value,
-      tags: tagIds,
-    };
-    showSavingOverlay('更新資源中...');
-    try {
-      await api('PUT', `/api/resources/${encodeURIComponent(form.id.value)}`, payload);
-      showToast('資源已更新');
-      modal.classList.remove('active');
-      loadResources();
-    } catch (err) {
-      showToast('更新失敗：' + err.message);
-    } finally {
-      hideSavingOverlay();
+    const resourceId = encodeURIComponent(form.id.value);
+    if (state.resourceFile && storageType === 'r2') {
+      // ── 編輯 + 替換檔案（multipart PUT）─────────────────────────────
+      const fd = new FormData();
+      fd.append('title',         form.title.value.trim());
+      fd.append('description',   form.description.value.trim());
+      fd.append('resource_type', form.resource_type.value);
+      fd.append('tags',          tagIds.join(','));
+      fd.append('file',          state.resourceFile);
+      showSavingOverlay(`上傳「${state.resourceFile.name}」中，請勿關閉頁面...`);
+      try {
+        const res = await fetch(`/api/resources/${resourceId}`, {
+          method: 'PUT',
+          headers: { 'X-User-Code': state.userCode },
+          body: fd,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        showToast('資源與檔案已更新');
+        modal.classList.remove('active');
+        loadResources();
+      } catch (err) {
+        showToast('更新失敗：' + err.message);
+      } finally {
+        hideSavingOverlay();
+      }
+    } else {
+      // ── 編輯（僅更新資訊，JSON PUT）──────────────────────────────────
+      const payload = {
+        title:         form.title.value.trim(),
+        description:   form.description.value.trim(),
+        resource_type: form.resource_type.value,
+        tags: tagIds,
+      };
+      showSavingOverlay('更新資源中...');
+      try {
+        await api('PUT', `/api/resources/${resourceId}`, payload);
+        showToast('資源已更新');
+        modal.classList.remove('active');
+        loadResources();
+      } catch (err) {
+        showToast('更新失敗：' + err.message);
+      } finally {
+        hideSavingOverlay();
+      }
     }
 
   } else if (storageType === 'r2') {
@@ -1441,4 +1477,526 @@ function showToast(msg) {
   el.textContent = msg;
   el.classList.add('active');
   setTimeout(() => el.classList.remove('active'), 2400);
+}
+
+// ======= 問卷匯入 =======================================================
+
+const surveyState = {
+  dryRunResult: null,
+  pendingFile: null,
+  importedIds: [],
+  allRows: [],            // 全部問卷記錄快取
+  sort: { field: 'imported_at', order: 'DESC' },
+};
+
+function bindSurveyModal() {
+  const modal = document.getElementById('survey-modal');
+  const dropZone = document.getElementById('survey-drop');
+  const fileInput = document.getElementById('survey-file-input');
+
+  // 開啟影片区
+  document.getElementById('btn-survey-import').addEventListener('click', () => openSurveyModal());
+
+  // 拖曳 & 點擊
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const f = e.dataTransfer.files?.[0];
+    if (f) runSurveyDryRun(f);
+  });
+  fileInput.addEventListener('change', () => {
+    const f = fileInput.files?.[0];
+    if (f) runSurveyDryRun(f);
+  });
+
+  // 重新上傳
+  document.getElementById('survey-reupload').addEventListener('click', () => resetSurveyModal());
+
+  // 重複選擇切換
+  document.querySelectorAll('input[name="dup-action"]').forEach(r => {
+    r.addEventListener('change', () => {
+      const show = r.value === 'select';
+      document.getElementById('survey-dup-list').style.display = show ? 'block' : 'none';
+    });
+  });
+
+  // 確認匯入
+  document.getElementById('survey-confirm-import').addEventListener('click', runSurveyImport);
+
+  // 預先生成說帖
+  document.getElementById('survey-start-generate').addEventListener('click', runBulkGenerate);
+  document.getElementById('survey-skip-generate').addEventListener('click', () => {
+    modal.classList.remove('active');
+    loadSurveyList();
+  });
+
+  // 背景點擊關閉
+  modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('active'); });
+  modal.querySelectorAll('[data-close-modal]').forEach(b => b.addEventListener('click', () => modal.classList.remove('active')));
+}
+
+function openSurveyModal() {
+  const modal = document.getElementById('survey-modal');
+  resetSurveyModal();
+  modal.classList.add('active');
+}
+
+function resetSurveyModal() {
+  document.getElementById('survey-step-upload').style.display = 'block';
+  document.getElementById('survey-step-loading').style.display = 'none';
+  document.getElementById('survey-step-preview').style.display = 'none';
+  document.getElementById('survey-step-result').style.display = 'none';
+  document.getElementById('survey-file-input').value = '';
+  surveyState.dryRunResult = null;
+  surveyState.pendingFile = null;
+}
+
+async function runSurveyDryRun(file) {
+  surveyState.pendingFile = file;
+
+  // 切換到載入中畫面
+  document.getElementById('survey-step-upload').style.display = 'none';
+  document.getElementById('survey-step-loading').style.display = 'block';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('dry_run', '1');
+
+    const res = await fetch('/api/admin/survey/import', {
+      method: 'POST',
+      headers: { 'X-User-Code': state.userCode },
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    surveyState.dryRunResult = data;
+    showSurveyPreview(data);
+  } catch (err) {
+    document.getElementById('survey-step-loading').style.display = 'none';
+    document.getElementById('survey-step-upload').style.display = 'block';
+    showToast('解析失敗：' + err.message);
+  }
+}
+
+function showSurveyPreview(data) {
+  document.getElementById('survey-step-loading').style.display = 'none';
+  document.getElementById('survey-step-preview').style.display = 'block';
+
+  const industryLabel = data.industry_type === 'manufacturing' ? '製造業' : '流通/零售業';
+  document.getElementById('survey-preview-badge').textContent = industryLabel;
+  document.getElementById('survey-preview-count').textContent = `共 ${data.total} 筆資料`;
+
+  // 重複提示
+  const dupPanel = document.getElementById('survey-duplicate-panel');
+  const dupList = document.getElementById('survey-dup-list');
+  if (data.duplicates && data.duplicates.length > 0) {
+    document.getElementById('survey-dup-count').textContent = data.duplicates.length;
+    dupPanel.style.display = 'block';
+    // 手動選擇區
+    dupList.innerHTML = data.duplicates.map(d => `
+      <label style="display:flex;align-items:center;gap:8px;padding:4px;border-bottom:1px solid #f3f4f6;font-size:0.84rem;">
+        <input type="checkbox" value="${escapeHtml(d.customer_code)}">
+        <strong>${escapeHtml(d.customer_code)}</strong>
+        ${escapeHtml(d.company_name)} — ${escapeHtml(d.session_name)} (${escapeHtml(d.event_date)})
+      </label>
+    `).join('');
+    // 重設重複分流選項預設為 skip
+    document.querySelector('input[name="dup-action"][value="skip"]').checked = true;
+    dupList.style.display = 'none';
+  } else {
+    dupPanel.style.display = 'none';
+  }
+
+  // 預覽表格
+  const tbody = document.getElementById('survey-preview-tbody');
+  tbody.innerHTML = (data.preview || []).map(r => `
+    <tr>
+      <td><code>${escapeHtml(r.customer_code)}</code></td>
+      <td>${escapeHtml(r.company_name)}</td>
+      <td>${escapeHtml(r.session_name)}</td>
+      <td>${r.attended ? '✔️' : '✖️'}</td>
+      <td>${r.has_survey ? '✔️' : '✖️'}</td>
+      <td><span class="signal-tag">${(r.signals || []).length} 個</span></td>
+    </tr>
+  `).join('');
+}
+
+async function runSurveyImport() {
+  if (!surveyState.pendingFile) return;
+
+  const dupAction = document.querySelector('input[name="dup-action"]:checked')?.value || 'skip';
+  let overwriteCodes = '';
+  if (dupAction === 'overwrite') {
+    // 覆蓋所有重複
+    const dups = surveyState.dryRunResult?.duplicates || [];
+    overwriteCodes = dups.map(d => d.customer_code).join(',');
+  } else if (dupAction === 'select') {
+    // 手動勾選的
+    const checked = [...document.querySelectorAll('#survey-dup-list input:checked')];
+    overwriteCodes = checked.map(c => c.value).join(',');
+  }
+
+  const formData = new FormData();
+  formData.append('file', surveyState.pendingFile);
+  if (overwriteCodes) formData.append('overwrite_codes', overwriteCodes);
+
+  showSavingOverlay('匯入問卷中...');
+  try {
+    const res = await fetch('/api/admin/survey/import', {
+      method: 'POST',
+      headers: { 'X-User-Code': state.userCode },
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    // 切換到結果畫面
+    document.getElementById('survey-step-preview').style.display = 'none';
+    document.getElementById('survey-step-result').style.display = 'block';
+
+    const total = data.total || 0;
+    const imported = data.imported || 0;
+    const skipped = data.skipped || 0;
+    const overwritten = data.overwritten || 0;
+    document.getElementById('survey-result-summary').innerHTML = `
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;">
+        <div class="ingest-field-row" style="display:block;">
+          <span style="color:var(--text-secondary);ont-size:0.8rem;">共處理</span><br>
+          <strong style="font-size:1.5rem;color:var(--primary);">${total}</strong> 筆
+        </div>
+        <div class="ingest-field-row" style="display:block;">
+          <span style="color:var(--text-secondary);font-size:0.8rem;">新增匯入</span><br>
+          <strong style="font-size:1.5rem;color:#16a34a;">${imported}</strong> 筆
+        </div>
+        <div class="ingest-field-row" style="display:block;">
+          <span style="color:var(--text-secondary);font-size:0.8rem;">覆蓋更新</span><br>
+          <strong style="font-size:1.5rem;color:#d97706;">${overwritten}</strong> 筆
+        </div>
+        <div class="ingest-field-row" style="display:block;">
+          <span style="color:var(--text-secondary);font-size:0.8rem;">跳過重複</span><br>
+          <strong style="font-size:1.5rem;color:#9ca3af;">${skipped}</strong> 筆
+        </div>
+      </div>
+      ${data.errors?.length ? `<p style="color:var(--danger);font-size:0.8rem;">失敗 ${data.errors.length} 筆，請檢查控制台日誌</p>` : ''}
+    `;
+
+    // 更新生成筆數
+    document.getElementById('survey-gen-count').textContent = imported + overwritten;
+
+    // 後續查詢權取得新匯入的 ID資料
+    surveyState.importedIds = [];
+    if (imported + overwritten > 0) {
+      try {
+        const listRes = await fetch('/api/admin/survey/import?recent=1', {
+          headers: { 'X-User-Code': state.userCode },
+        });
+        if (listRes.ok) {
+          const listData = await listRes.json();
+          surveyState.importedIds = (listData.results || []).map(r => r.id);
+        }
+      } catch { /* noop */ }
+    }
+
+    showToast(`匯入完成！新增 ${imported} 筆，覆蓋 ${overwritten} 筆`);
+  } catch (err) {
+    showToast('匯入失敗：' + err.message);
+    document.getElementById('survey-step-preview').style.display = 'block';
+    document.getElementById('survey-step-result').style.display = 'none';
+  } finally {
+    hideSavingOverlay();
+  }
+}
+
+async function runBulkGenerate() {
+  const modal = document.getElementById('survey-modal');
+  const genBtn = document.getElementById('survey-start-generate');
+  const skipBtn = document.getElementById('survey-skip-generate');
+  const progressWrap = document.getElementById('survey-gen-progress-wrap');
+  const bar = document.getElementById('survey-gen-bar');
+  const status = document.getElementById('survey-gen-status');
+
+  // 如果沒有 ID 列表，改用全長匯入列表項目
+  let ids = surveyState.importedIds;
+  if (!ids.length) {
+    showToast('找不到需要生成的記錄');
+    return;
+  }
+
+  genBtn.disabled = true;
+  skipBtn.disabled = true;
+  progressWrap.style.display = 'block';
+  bar.style.width = '0%';
+
+  const BATCH = 5;
+  let done = 0;
+  let failed = 0;
+
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const batch = ids.slice(i, i + BATCH);
+    try {
+      const res = await fetch('/api/admin/survey/bulk-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Code': state.userCode },
+        body: JSON.stringify({ survey_ids: batch, batch_size: BATCH }),
+      });
+      const data = await res.json().catch(() => ({}));
+      done += data.generated || 0;
+      failed += data.failed || 0;
+    } catch { failed += batch.length; }
+
+    const pct = Math.round(((i + batch.length) / ids.length) * 100);
+    bar.style.width = pct + '%';
+    status.textContent = `已生成 ${done} / ${ids.length} 筆，失敗 ${failed} 筆`;
+
+    // 防止連續呼叫 — 每批之間稍停
+    if (i + BATCH < ids.length) {
+      await new Promise(r => setTimeout(r, 2500));
+    }
+  }
+
+  bar.style.width = '100%';
+  status.textContent = `生成完成！共 ${done} 筆，失敗 ${failed} 筆`;
+  showToast(`預先生成說帖完成！生成 ${done} 筆`);
+
+  genBtn.disabled = false;
+  skipBtn.disabled = false;
+  genBtn.textContent = '完成 — 關閉';
+  genBtn.onclick = () => { modal.classList.remove('active'); loadSurveyList(); };
+}
+
+async function loadSurveyList() {
+  const tbody = document.getElementById('survey-tbody');
+  tbody.innerHTML = '<tr><td colspan="11" class="empty">載入中...</td></tr>';
+
+  try {
+    const q = document.getElementById('survey-search').value.trim();
+    const industry = document.getElementById('survey-filter-industry').value;
+    const location = document.getElementById('survey-filter-location').value;
+    const attended = document.getElementById('survey-filter-attended').value;
+    const survey = document.getElementById('survey-filter-survey').value;
+    const pitch = document.getElementById('survey-filter-pitch').value;
+
+    const params = new URLSearchParams({
+      q, industry, location, attended, survey, pitch,
+      sort: surveyState.sort.field,
+      order: surveyState.sort.order,
+      limit: 1000
+    });
+
+    const res = await fetch(`/api/admin/survey/import?${params.toString()}`, {
+      headers: { 'X-User-Code': state.userCode },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const rows = data.results || [];
+    surveyState.allRows = rows;
+
+    updateSurveyStats(rows);
+    renderSurveyRows(rows);
+
+    document.getElementById('btn-stats-refresh').onclick = loadSurveyList;
+
+    // 批量生成
+    document.getElementById('btn-bulk-generate').onclick = async () => {
+      const selected = [...document.querySelectorAll('.survey-row-check:checked')].map(cb => parseInt(cb.value));
+      if (selected.length === 0) { showToast('請先勾選記錄'); return; }
+      surveyState.importedIds = selected;
+      openSurveyModal();
+      document.getElementById('survey-step-upload').style.display = 'none';
+      document.getElementById('survey-step-result').style.display = 'block';
+      document.getElementById('survey-result-summary').innerHTML = `<p>已選擇 <strong>${selected.length}</strong> 筆記錄，準備預先生成說帖。</p>`;
+      document.getElementById('survey-gen-count').textContent = selected.length;
+    };
+
+    // 批量刪除
+    const bulkDelBtn = document.getElementById('btn-survey-bulk-delete');
+    bulkDelBtn.onclick = async () => {
+      const selected = [...document.querySelectorAll('.survey-row-check:checked')].map(cb => parseInt(cb.value));
+      if (selected.length === 0) return;
+      if (!confirm(`確定要刪除這 ${selected.length} 筆問卷記錄嗎？`)) return;
+      
+      try {
+        const delRes = await fetch('/api/admin/survey/import', {
+          method: 'DELETE',
+          headers: { 'X-User-Code': state.userCode, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: selected })
+        });
+        if (!delRes.ok) throw new Error('刪除失敗');
+        showToast(`已成功刪除 ${selected.length} 筆資料`);
+        loadSurveyList();
+      } catch (err) {
+        showToast(err.message);
+      }
+    };
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="11" class="empty">載入失敗：${err.message}</td></tr>`;
+  }
+}
+
+// 綁定篩選器事件（防抖）
+let _surveyFilterTimer = null;
+const triggerSurveyFilter = () => {
+  clearTimeout(_surveyFilterTimer);
+  _surveyFilterTimer = setTimeout(loadSurveyList, 300);
+};
+
+['survey-search', 'survey-filter-industry', 'survey-filter-location', 'survey-filter-attended', 'survey-filter-survey', 'survey-filter-pitch'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', triggerSurveyFilter);
+});
+
+// 點擊表頭排序
+document.querySelectorAll('th.sortable').forEach(th => {
+  th.addEventListener('click', () => {
+    const field = th.dataset.sort;
+    if (surveyState.sort.field === field) {
+      surveyState.sort.order = surveyState.sort.order === 'ASC' ? 'DESC' : 'ASC';
+    } else {
+      surveyState.sort.field = field;
+      surveyState.sort.order = 'ASC';
+    }
+    // 更新 UI 標示（可選，略過或簡單加個符號）
+    loadSurveyList();
+  });
+});
+
+function updateSurveyStats(rows) {
+  const badge = document.getElementById('survey-count-badge');
+  badge.textContent = `${rows.length} 筆`;
+  const statsBar = document.getElementById('survey-stats-bar');
+  if (rows.length > 0) {
+    const withPitch = rows.filter(r => r.has_pitch).length;
+    document.getElementById('stat-total').textContent = rows.length;
+    document.getElementById('stat-with-pitch').textContent = withPitch;
+    document.getElementById('stat-no-pitch').textContent = rows.length - withPitch;
+    document.getElementById('stat-attended').textContent = rows.filter(r => r.attended).length;
+    document.getElementById('stat-has-survey').textContent = rows.filter(r => r.has_survey).length;
+    statsBar.style.display = 'flex';
+  } else {
+    statsBar.style.display = 'none';
+  }
+}
+
+function renderSurveyRows(rows) {
+  const tbody = document.getElementById('survey-tbody');
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="11" class="empty">尚無問卷資料，請點『匯入問卷 XLSX』開始</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => {
+    const signals = (() => { try { return JSON.parse(r.signals); } catch { return []; } })();
+    const industryIcon = r.industry_type === 'manufacturing' ? '🏭' : '🛒';
+    const industryText = r.industry_type === 'manufacturing' ? '製造' : '流通';
+    const pitchStatus = r.has_pitch
+      ? `<span class="pitch-status-yes" title="生成於 ${r.pitch_created_at || ''}">✔ 已生成</span>`
+      : `<span class="pitch-status-no">— 待生成</span>`;
+    return `<tr>
+      <td><input type="checkbox" class="survey-row-check" value="${r.id}"></td>
+      <td><code>${escapeHtml(r.customer_code)}</code></td>
+      <td>${escapeHtml(r.company_name || '')}</td>
+      <td>${escapeHtml(r.contact_name || '')}</td>
+      <td><small>${escapeHtml(r.session_name || '')}</small></td>
+      <td>${industryIcon} <small>${industryText}</small></td>
+      <td>${r.attended ? '<span style="color:#16a34a;">✔ 到場</span>' : '<span style="color:#9ca3af;">✖ 未到</span>'}</td>
+      <td>${r.has_survey ? '<span style="color:#16a34a;">✔ 填寫</span>' : '<span style="color:#9ca3af;">✖ 未填</span>'}</td>
+      <td><small>${signals.length} 個</small></td>
+      <td>${pitchStatus}</td>
+      <td>
+        <div class="row-actions">
+          <button class="btn-ghost" style="font-size:0.78rem;padding:3px 8px;" onclick="openSurveyEditModal(${r.id})">編輯</button>
+          <button class="btn-danger" style="font-size:0.78rem;padding:3px 8px;" onclick="deleteSurveyRecord(${r.id})">刪除</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('survey-select-all').onchange = function () {
+    document.querySelectorAll('.survey-row-check').forEach(cb => cb.checked = this.checked);
+    updateBulkButtons();
+  };
+  document.querySelectorAll('.survey-row-check').forEach(cb => {
+    cb.onchange = updateBulkButtons;
+  });
+}
+
+function updateBulkButtons() {
+  const selected = document.querySelectorAll('.survey-row-check:checked').length;
+  const bulkGenBtn = document.getElementById('btn-bulk-generate');
+  const bulkDelBtn = document.getElementById('btn-survey-bulk-delete');
+  if (bulkGenBtn) bulkGenBtn.style.display = selected > 0 ? 'inline-flex' : 'none';
+  if (bulkDelBtn) bulkDelBtn.style.display = selected > 0 ? 'inline-flex' : 'none';
+}
+
+window.openSurveyEditModal = function (id) {
+  const rec = surveyState.allRows.find(r => r.id === id);
+  if (!rec) return;
+  const modal = document.getElementById('survey-edit-modal');
+  const form = document.getElementById('survey-edit-form');
+  form.reset();
+  form.id.value = id;
+  document.getElementById('survey-edit-code').textContent = rec.customer_code || '';
+  document.getElementById('survey-edit-company').textContent = rec.company_name || '';
+  form.contact_name.value = rec.contact_name || '';
+  form.job_title.value = rec.job_title || '';
+  form.attended.checked = !!rec.attended;
+  form.has_survey.checked = !!rec.has_survey;
+  modal.classList.add('active');
+};
+
+window.deleteSurveyRecord = async function (id) {
+  const rec = surveyState.allRows.find(r => r.id === id);
+  const label = rec ? `${rec.company_name}（${rec.customer_code}）` : `ID ${id}`;
+  if (!confirm(`確定刪除「${label}」的問卷記錄？\n（若已生成 bulk 說帖，也會一併刪除）`)) return;
+  try {
+    const res = await fetch(`/api/admin/survey/${id}`, {
+      method: 'DELETE',
+      headers: { 'X-User-Code': state.userCode },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    showToast('已刪除');
+    loadSurveyList();
+  } catch (err) {
+    showToast('刪除失敗：' + err.message);
+  }
+};
+
+function bindSurveyEditModal() {
+  const modal = document.getElementById('survey-edit-modal');
+  document.getElementById('survey-edit-cancel').addEventListener('click', () => modal.classList.remove('active'));
+  modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('active'); });
+
+  document.getElementById('survey-edit-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const form = e.target;
+    const id = form.id.value;
+    const payload = {
+      attended:     form.attended.checked,
+      has_survey:   form.has_survey.checked,
+      contact_name: form.contact_name.value.trim(),
+      job_title:    form.job_title.value.trim(),
+    };
+    showSavingOverlay('更新記錄中...');
+    try {
+      const res = await fetch(`/api/admin/survey/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-User-Code': state.userCode },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      showToast('已更新');
+      modal.classList.remove('active');
+      loadSurveyList();
+    } catch (err) {
+      showToast('更新失敗：' + err.message);
+    } finally {
+      hideSavingOverlay();
+    }
+  });
 }

@@ -41,6 +41,7 @@
         <button class="tab active" data-tab="generate">生成說帖</button>
         <button class="tab" data-tab="leaderboard">排行榜</button>
         <button class="tab" data-tab="history">我的記錄</button>
+        <button class="tab" data-tab="speakers">講師素材</button>
       </nav>
     </div>
   </header>
@@ -48,6 +49,13 @@
   <main class="container">
     <!-- ===== 生成說帖頁 ===== -->
     <section id="tab-generate" class="tab-content active">
+      <!-- 子頁籤：邀約 / 回訪 -->
+      <div class="sub-tabs">
+        <button class="sub-tab active" data-subtab="invite">📨 邀約說帖</button>
+        <button class="sub-tab" data-subtab="followup">🔄 回訪說帖</button>
+      </div>
+      <!-- 邀約子頁 -->
+      <div id="subtab-invite">
       <div class="card">
         <h2 class="card-title">填寫客戶資訊</h2>
         <form id="form-generate">
@@ -201,6 +209,18 @@
           <button class="btn-secondary" id="btn-regenerate">重新生成</button>
         </div>
 
+        <!-- 回訪重新生成渠道選擇（僅回訪模式顯示）-->
+        <div id="fu-regen-section" style="display:none; margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
+          <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:8px; font-weight:500;">選擇重新生成的聯繫渠道：</div>
+          <div class="radio-group" style="margin-bottom:12px">
+            <label class="radio-label"><input type="radio" name="fu-regen-ch" value="phone"> 📞 電話</label>
+            <label class="radio-label"><input type="radio" name="fu-regen-ch" value="visit"> 🤝 面訪</label>
+            <label class="radio-label"><input type="radio" name="fu-regen-ch" value="line"> 💬 LINE</label>
+            <label class="radio-label"><input type="radio" name="fu-regen-ch" value="email"> 📧 Email</label>
+          </div>
+          <button class="btn-primary" id="btn-confirm-regen" style="width:auto; padding:8px 20px; font-size:0.875rem">確認重新生成</button>
+        </div>
+
         <!-- AI 微調區 -->
         <div class="refine-section">
           <h3 class="refine-title">AI 微調</h3>
@@ -221,6 +241,97 @@
           </div>
         </div>
       </div>
+      </div><!-- /subtab-invite -->
+
+      <!-- 回訪子頁 -->
+      <div id="subtab-followup" style="display:none">
+
+        <!-- 客戶選擇卡 -->
+        <div class="card">
+          <h2 class="card-title">選擇回訪客戶</h2>
+          <div class="mode-switcher">
+            <button class="mode-btn active" data-mode="search">🔍 搜尋現有客戶</button>
+            <button class="mode-btn" data-mode="profile">📋 依客戶輪廓</button>
+          </div>
+
+          <!-- 搜尋模式 -->
+          <div id="fu-mode-search" class="fu-mode">
+            <!-- 預先生成說帖清單 -->
+            <div id="fu-pregenerated-section" style="margin-top:16px; display:none;">
+              <div class="pregen-section-header">
+                <span class="pregen-section-title">預先生成說帖（<span id="fu-pregen-count">0</span> 筆）</span>
+                <input type="text" id="fu-pregen-search" class="pregen-search" placeholder="搜尋客戶…" autocomplete="off">
+              </div>
+              <div id="fu-pregen-list">
+                <div class="pregen-empty">載入中…</div>
+              </div>
+            </div>
+
+            <!-- 搜尋框（精確搜尋） -->
+            <div class="form-group" style="margin-top:16px;position:relative;">
+              <label>精確搜尋（潛客代號或公司名）</label>
+              <input type="text" id="fu-customer-search" placeholder="輸入潛客代號、公司名稱、聯絡人姓名…"
+                autocomplete="off">
+              <div id="fu-customer-results" class="customer-autocomplete" style="display:none;"></div>
+              <small id="fu-customer-hint" style="color:var(--text-secondary); margin-top:4px; display:block;">
+                💡 輸入後可帶入問卷資料並選擇渠道重新生成說帖。
+              </small>
+            </div>
+            <!-- 自動帶入的客戶資訊顯示區 -->
+            <div id="fu-loaded-customer" style="display:none;" class="loaded-customer-banner">
+              <span id="fu-loaded-info"></span>
+              <button type="button" id="fu-clear-customer" class="btn-clear-customer">× 清除</button>
+            </div>
+          </div>
+
+          <!-- 輪廓模式 -->
+          <div id="fu-mode-profile" class="fu-mode" style="display:none">
+            <div class="form-group" style="margin-top:16px">
+              <label class="required">客戶產業</label>
+              <div class="industry-picker">
+                <button class="industry-btn active" data-industry="manufacturing">🏭 製造業</button>
+                <button class="industry-btn" data-industry="retail">🏪 流通/零售</button>
+              </div>
+            </div>
+            <div id="fu-questionnaire"></div>
+          </div>
+        </div>
+
+        <!-- 渠道選擇卡 -->
+        <div class="card" id="fu-channel-card" style="display:none">
+          <h2 class="card-title">選擇聯繫渠道</h2>
+          <div class="radio-group">
+            <label class="radio-label"><input type="radio" name="fu-channel" value="phone"> 📞 電話</label>
+            <label class="radio-label"><input type="radio" name="fu-channel" value="visit"> 🤝 面訪</label>
+            <label class="radio-label"><input type="radio" name="fu-channel" value="line"> 💬 LINE</label>
+            <label class="radio-label"><input type="radio" name="fu-channel" value="email"> 📧 Email</label>
+          </div>
+          <button class="btn-primary" id="btn-generate-followup" style="margin-top:16px" disabled>
+            <span class="btn-text">✨ 生成回訪說帖</span>
+            <span class="btn-loading" style="display:none"><span class="spinner"></span> AI 生成中...</span>
+          </button>
+        </div>
+
+        <!-- 回訪說帖結果區 -->
+        <div id="fu-result-area" class="card" style="display:none">
+          <div class="result-header">
+            <h2 class="card-title">回訪說帖結果</h2>
+            <div class="result-actions">
+              <button class="btn-icon" id="fu-btn-copy" title="複製內容">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div id="fu-result-content" class="result-content pitch-rendered"></div>
+          <div class="result-footer">
+            <button class="btn-secondary" id="fu-btn-regenerate">重新生成</button>
+          </div>
+        </div>
+
+      </div><!-- /subtab-followup -->
     </section>
 
     <!-- ===== 排行榜頁 ===== -->
@@ -279,12 +390,36 @@
         </div>
       </div>
     </section>
+
+    <!-- ===== 年會講師素材頁 ===== -->
+    <section id="tab-speakers" class="tab-content">
+      <div class="card">
+        <h2 class="card-title">年會講師素材庫</h2>
+        <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:16px;">共 7 位講師・50 張知識卡，涵蓋製造與流通雙場景</p>
+        <div class="form-group">
+          <input type="text" id="speaker-search" placeholder="搜尋講師名稱、關鍵詞或訊號代碼…">
+        </div>
+        <div class="speaker-filter-bar">
+          <button class="speaker-filter-btn active" data-speaker="">全部</button>
+          <button class="speaker-filter-btn" data-speaker="HYK">黃昱凱</button>
+          <button class="speaker-filter-btn" data-speaker="HYZ">黃盈彰</button>
+          <button class="speaker-filter-btn" data-speaker="LYH">李義訓</button>
+          <button class="speaker-filter-btn" data-speaker="LDK">林大馗</button>
+          <button class="speaker-filter-btn" data-speaker="ZWN">詹文男</button>
+          <button class="speaker-filter-btn" data-speaker="HCH">洪春暉</button>
+          <button class="speaker-filter-btn" data-speaker="ZH">朱浩</button>
+        </div>
+        <div id="speaker-cards-list" class="speaker-cards-list">
+          <div class="loading-placeholder">請選擇上方講師篩選或輸入關鍵字搜尋</div>
+        </div>
+      </div>
+    </section>
   </main>
 
-  <!-- 年會資訊浮動按鈕 -->
+  <!-- 功能說明浮動按鈕 -->
   <div class="fab-container">
-    <span class="fab-label">年會資訊</span>
-    <button class="fab" id="btn-info" title="年會資訊">
+    <span class="fab-label">功能說明</span>
+    <button class="fab" id="btn-info" title="功能說明">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
         stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"></circle>
@@ -294,39 +429,120 @@
     </button>
   </div>
 
-  <!-- 年會資訊 Modal -->
+  <!-- 功能說明 Modal -->
   <div class="modal-overlay" id="modal-info" style="display:none">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>2026 鼎新企業高峰年會</h2>
+    <div class="modal" style="max-width:520px; max-height:80vh; display:flex; flex-direction:column;">
+      <div class="modal-header" style="flex-shrink:0;">
+        <h2>功能使用說明</h2>
         <button class="modal-close" id="modal-close">&times;</button>
       </div>
-      <div class="modal-body">
-        <p class="event-theme">AI共生 跨出新競局</p>
-        <p class="event-subtitle">Agentic AI 重構企業新運行模式</p>
+      <div class="modal-body" style="overflow-y:auto; flex:1;">
 
-        <div class="info-section">
-          <h3>場次資訊</h3>
-          <div class="info-row"><strong>台北場</strong> 4/16（四）13:00–17:00｜台北大直典華</div>
-          <div class="info-row"><strong>台中場</strong> 4/21（二）13:00–17:00｜台中金典酒店</div>
+        <!-- 回訪說帖 -->
+        <div class="info-section" style="margin-bottom:20px;">
+          <h3 style="display:flex;align-items:center;gap:6px;">🔄 回訪說帖</h3>
+          <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">年會結束後，針對已出席或填問卷的客戶，快速產生個人化的後續聯繫話術。</p>
+
+          <div class="guide-step">
+            <span class="guide-step-num">1</span>
+            <div>
+              <strong>切換到「回訪說帖」子頁籤</strong>
+              <p>在「生成說帖」頁面上方點選「🔄 回訪說帖」。</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <span class="guide-step-num">2</span>
+            <div>
+              <strong>選擇模式</strong>
+              <p><strong>🔍 搜尋現有客戶</strong> — 若後台已匯入問卷資料，直接搜尋公司名或潛客代號，即可看到系統預先生成的說帖，點選後直接使用，或選其他渠道重新生成。</p>
+              <p style="margin-top:6px;"><strong>📋 依客戶輪廓</strong> — 手動選擇客戶產業（製造 / 流通），勾選問卷訊號，再選聯繫渠道（電話 / LINE / Email / 面訪）後生成。</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <span class="guide-step-num">3</span>
+            <div>
+              <strong>系統自動判定優先級</strong>
+              <p>根據問卷訊號，系統會將客戶分為 <strong>P1 立即推進</strong>、P2 積極培育、P3 案例升溫、P4 長期培育，並依策略生成對應說帖。</p>
+            </div>
+          </div>
+          <div class="guide-tip">
+            💡 預先生成說帖清單會依信號強度排序，<strong>★ 高商機</strong> 訊號代表客戶有明確預算或強意願，優先聯繫。
+          </div>
         </div>
 
+        <hr style="border:none;border-top:1px solid var(--border);margin:0 0 20px;">
+
+        <!-- 講師素材 -->
         <div class="info-section">
-          <h3>議程亮點</h3>
-          <ul>
-            <li><strong>詹文男院長 / 洪春暉所長</strong> — Agentic AI 重構企業競爭力</li>
-            <li><strong>KPMG 林大馗執行副總</strong> — AI Agent 企業治理新挑戰</li>
-            <li><strong>鼎新 黃盈彰總經理</strong> — 企業 Agent 落地路徑</li>
-            <li><strong>製造分場</strong>：高通 Edge AI 應用、製造業 AI 場景深度座談</li>
-            <li><strong>流通分場</strong>：商研院實務案例、點點心 / 小磨坊 / 歐都納 高峰論壇</li>
-          </ul>
+          <h3 style="display:flex;align-items:center;gap:6px;">🎤 講師素材庫</h3>
+          <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">7 位講師 × 50 張知識卡，提供業務在電訪或 Email 中可直接引用的具體話術。</p>
+
+          <div class="guide-step">
+            <span class="guide-step-num">1</span>
+            <div>
+              <strong>依情境搜尋知識卡</strong>
+              <p>切換到「講師素材」頁籤，可依講師篩選，或輸入關鍵字（如「供應鏈」「ROI」「缺工」）搜尋全文。</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <span class="guide-step-num">2</span>
+            <div>
+              <strong>點擊引言展開完整內容</strong>
+              <p>點擊卡片上的藍色引言文字，可展開：完整觀點、簡報頁次（方便說明投影片位置）、以及 2–3 句可直接使用的業務話術。</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <span class="guide-step-num">3</span>
+            <div>
+              <strong>點擊話術一鍵複製</strong>
+              <p>話術句子點擊即可複製，貼入 LINE 或 Email 時可直接使用，無需改寫。</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <span class="guide-step-num">4</span>
+            <div>
+              <strong>說帖中的講師引用可點擊</strong>
+              <p>AI 生成的說帖中，有底線的藍色文字即為講師引用。點擊後會自動切換到「講師素材」頁籤，並直接展開對應知識卡，方便進一步查閱或複製話術。</p>
+            </div>
+          </div>
+          <div class="guide-tip">
+            💡 卡片上的標籤為「適用情境」，對應客戶問卷的訊號類型，可快速判斷哪張卡最適合眼前的客戶。
+          </div>
         </div>
+
       </div>
     </div>
   </div>
 
+    <!-- 講師簡報預覽 Modal -->
+    <div id="speaker-preview-modal" class="rc-preview-overlay" style="display:none" role="dialog" aria-modal="true" aria-label="簡報預覽" onclick="if(event.target===this)closeSlidePreview()">
+      <div class="rc-preview-inner">
+        <div class="rc-preview-header">
+          <span class="rc-preview-title" id="speaker-preview-title"></span>
+          <div class="rc-preview-actions">
+            <div id="speaker-pdf-controls" class="rc-pdf-controls" style="display:none">
+              <button class="rc-preview-btn" id="speaker-pdf-prev" onclick="speakerPdfPrev()" disabled>‹</button>
+              <span id="speaker-pdf-page-info" class="rc-pdf-page-info">1 / 1</span>
+              <button class="rc-preview-btn" id="speaker-pdf-next" onclick="speakerPdfNext()" disabled>›</button>
+            </div>
+            <button class="rc-preview-btn rc-preview-close" onclick="closeSlidePreview()" title="關閉">✕</button>
+          </div>
+        </div>
+        <div class="rc-preview-body" id="speaker-preview-body">
+          <div class="rc-preview-loading" id="speaker-preview-loading">
+            <div class="spinner" style="width:36px;height:36px;border-width:4px;border-color:var(--primary) transparent transparent transparent;"></div>
+            <p style="margin-top:12px;color:rgba(255,255,255,0.7);font-size:0.9rem;">載入中，請稍候…</p>
+          </div>
+          <div class="rc-pdf-canvas-wrap" id="speaker-pdf-container" style="display:none">
+            <canvas id="speaker-pdf-canvas"></canvas>
+          </div>
+          <iframe id="speaker-preview-iframe" src="" style="display:none;width:100%;height:100%;min-height:70vh;border:none;background:#fff;" title="簡報預覽"></iframe>
+        </div>
+      </div>
+    </div>
   </div> <!-- // end #app-container -->
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="app.js"></script>
 </body>
 

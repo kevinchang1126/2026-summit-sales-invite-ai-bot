@@ -458,3 +458,80 @@ body:not(.is-superadmin) .superadmin-only { display: none !important; }
   .side-nav { white-space: nowrap; }
   .form-row { grid-template-columns: 1fr; }
 }
+
+/* ===== 問卷匯入 ===== */
+.survey-list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.survey-list-toolbar input[type=text] {
+  flex: 1;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-family: inherit;
+  background: #fff;
+}
+
+.survey-info-box {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 10px;
+  padding: 14px 18px;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: #0c4a6e;
+}
+.survey-info-box p { margin: 0 0 4px; }
+.survey-info-box p:last-child { margin: 0; }
+
+/* 重複警告框 */
+.survey-dup-warning {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.875rem;
+  color: #92400e;
+  margin-bottom: 10px;
+}
+
+/* 預先生成區塊 */
+.survey-generate-box {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-top: 8px;
+}
+.survey-generate-box h4 { color: #14532d; }
+
+/* 進度條 */
+.survey-progress-bar-wrap {
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.survey-progress-bar {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+/* 訊號標籤 */
+.signal-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  color: #1e40af;
+  margin: 1px;
+}

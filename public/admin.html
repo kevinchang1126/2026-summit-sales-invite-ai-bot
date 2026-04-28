@@ -42,6 +42,7 @@
           <button class="side-nav" data-view="series">系列活動</button>
           <button class="side-nav superadmin-only" data-view="tags">標籤管理</button>
           <button class="side-nav" data-view="resources">資源管理</button>
+          <button class="side-nav superadmin-only" data-view="survey">📊 問卷匯入</button>
         </nav>
       </aside>
 
@@ -168,6 +169,106 @@
           </div>
           <div id="tags-panel">
             <p class="empty">載入中...</p>
+          </div>
+        </section>
+
+        <!-- ===== 問卷匯入 ===== -->
+        <section id="view-survey" class="admin-view">
+          <div class="view-head">
+            <h2>📊 客戶問卷批量匯入</h2>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button id="btn-bulk-generate" class="btn-ghost" style="display:none;">⚡ 批量生成說帖</button>
+              <button id="btn-survey-import" class="btn-primary">⬆️ 匯入問卷 XLSX</button>
+            </div>
+          </div>
+          <div class="survey-info-box">
+            <p>支援<strong>製造業</strong>與<strong>流通業</strong>兩種問卷格式，自動辨別產業類型并轉換 Q1–Q8 答題為信號代碼。</p>
+            <p>匯入完成後可選擇「預先生成說帖」，由系統以 Email 格式一鍵生成所有客戶的回訪說帖。</p>
+          </div>
+
+          <!-- 匯入進度統計 -->
+          <div id="survey-stats-bar" class="survey-stats-bar" style="display:none;">
+            <div class="survey-stat">
+              <div class="survey-stat-num" id="stat-total">0</div>
+              <div class="survey-stat-label">總筆數</div>
+            </div>
+            <div class="survey-stat success">
+              <div class="survey-stat-num" id="stat-with-pitch">0</div>
+              <div class="survey-stat-label">已生成說帖</div>
+            </div>
+            <div class="survey-stat danger">
+              <div class="survey-stat-num" id="stat-no-pitch">0</div>
+              <div class="survey-stat-label">待生成</div>
+            </div>
+            <div class="survey-stat">
+              <div class="survey-stat-num" id="stat-attended">0</div>
+              <div class="survey-stat-label">實到人數</div>
+            </div>
+            <div class="survey-stat">
+              <div class="survey-stat-num" id="stat-has-survey">0</div>
+              <div class="survey-stat-label">有填問卷</div>
+            </div>
+            <button id="btn-stats-refresh" class="btn-ghost" style="margin-left:auto;font-size:0.8rem;white-space:nowrap;">↺ 重新整理</button>
+          </div>
+
+          <!-- 已匯入記錄列表 -->
+          <div class="table-wrap" style="margin-top:8px;">
+            <div id="survey-list-header" class="survey-list-toolbar" style="flex-wrap:wrap; gap:12px;">
+              <div style="display:flex; gap:8px; align-items:center;">
+                <span id="survey-count-badge" class="role-badge" style="white-space:nowrap;">0 筆</span>
+                <input id="survey-search" type="text" placeholder="搜尋代號、公司、聯絡人..." style="width:180px;">
+              </div>
+              <div class="survey-filters" style="display:flex; gap:8px; align-items:center; flex:1;">
+                <select id="survey-filter-industry" style="padding:4px; font-size:0.85rem;">
+                  <option value="">所有產業</option>
+                  <option value="manufacturing">製造業</option>
+                  <option value="retail">流通業</option>
+                </select>
+                <select id="survey-filter-location" style="padding:4px; font-size:0.85rem;">
+                  <option value="">所有地點</option>
+                  <option value="台北">台北</option>
+                  <option value="台中">台中</option>
+                  <option value="高雄">高雄</option>
+                  <option value="線上">線上</option>
+                </select>
+                <select id="survey-filter-attended" style="padding:4px; font-size:0.85rem;">
+                  <option value="">實到狀態</option>
+                  <option value="1">✔ 已到場</option>
+                  <option value="0">✖ 未到場</option>
+                </select>
+                <select id="survey-filter-survey" style="padding:4px; font-size:0.85rem;">
+                  <option value="">問卷狀態</option>
+                  <option value="1">✔ 有問卷</option>
+                  <option value="0">✖ 無問卷</option>
+                </select>
+                <select id="survey-filter-pitch" style="padding:4px; font-size:0.85rem;">
+                  <option value="">說帖狀態</option>
+                  <option value="1">✔ 已生成</option>
+                  <option value="0">✖ 待生成</option>
+                </select>
+                <button id="btn-survey-bulk-delete" class="btn-ghost" style="color:var(--danger); display:none; padding:4px 8px; font-size:0.85rem;">🗑 批量刪除</button>
+              </div>
+            </div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th><input type="checkbox" id="survey-select-all"></th>
+                  <th class="sortable" data-sort="customer_code">潛客代號 ↕</th>
+                  <th class="sortable" data-sort="company_name">公司 ↕</th>
+                  <th>姓名</th>
+                  <th class="sortable" data-sort="session_name">場次 ↕</th>
+                  <th class="sortable" data-sort="industry_type">產業 ↕</th>
+                  <th class="sortable" data-sort="attended">實到 ↕</th>
+                  <th class="sortable" data-sort="has_survey">問卷 ↕</th>
+                  <th>信號數</th>
+                  <th class="sortable" data-sort="has_pitch">說帖 ↕</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="survey-tbody">
+                <tr><td colspan="11" class="empty">尚無資料，請先匯入問卷</td></tr>
+              </tbody>
+            </table>
           </div>
         </section>
 
@@ -408,6 +509,151 @@
     </div>
 
     <div id="toast" class="toast"></div>
+
+    <!-- ===== Modal：問卷匯入 ===== -->
+    <div id="survey-modal" class="modal">
+      <div class="modal-inner" style="max-width:720px;">
+        <h3>📊 客戶問卷批量匯入</h3>
+
+        <!-- Step 1: 上傳檔案 -->
+        <div id="survey-step-upload">
+          <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:16px;">
+            請上傳官方導出的客戶問卷 XLSX，支援製造業和流通業兩種格式。
+          </p>
+          <div id="survey-drop" class="ingest-drop">
+            <div id="survey-drop-text">
+              <span style="font-size:2rem;">📊</span><br>
+              拖曳 XLSX 至此，或點擊選擇
+            </div>
+            <input type="file" id="survey-file-input" accept=".xlsx" style="display:none;">
+          </div>
+          <div style="margin-top:12px;text-align:right;">
+            <button type="button" class="btn-ghost" data-close-modal>取消</button>
+          </div>
+        </div>
+
+        <!-- Step 2: 載入中 -->
+        <div id="survey-step-loading" style="display:none;text-align:center;padding:32px;">
+          <div class="spinner"></div>
+          <p style="margin-top:12px;color:var(--text-secondary);">解析問卷中，請稍候...</p>
+        </div>
+
+        <!-- Step 3: 預覽 + 重複確認 -->
+        <div id="survey-step-preview" style="display:none;">
+          <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
+            <span id="survey-preview-badge" class="role-badge superadmin"></span>
+            <span id="survey-preview-count" style="color:var(--text-secondary);font-size:0.875rem;"></span>
+          </div>
+
+          <!-- 重複警告區 -->
+          <div id="survey-duplicate-panel" style="display:none;">
+            <div class="survey-dup-warning">
+              ⚠️ 發現 <strong id="survey-dup-count">0</strong> 筆重複記錄，請選擇處理方式：
+            </div>
+            <div style="margin:8px 0 12px;display:flex;gap:8px;flex-wrap:wrap;">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                <input type="radio" name="dup-action" value="skip" checked> 跳過所有重複（保留旧資料）
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                <input type="radio" name="dup-action" value="overwrite"> 覆蓋所有重複
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                <input type="radio" name="dup-action" value="select"> 手動選擇要覆蓋的記錄
+              </label>
+            </div>
+            <!-- 手動選擇區 -->
+            <div id="survey-dup-list" style="display:none;max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px;">
+              <!-- 動態填入 -->
+            </div>
+          </div>
+
+          <!-- 資料預覽表格 -->
+          <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:6px;">前 5 筆預覽：</div>
+          <div style="overflow-x:auto;">
+            <table class="data-table" style="font-size:0.82rem;">
+              <thead>
+                <tr>
+                  <th>潛客代號</th><th>公司</th><th>場次</th>
+                  <th>實到</th><th>問卷</th><th>信號數</th>
+                </tr>
+              </thead>
+              <tbody id="survey-preview-tbody"></tbody>
+            </table>
+          </div>
+
+          <div class="modal-actions" style="margin-top:16px;">
+            <button type="button" class="btn-ghost" data-close-modal>取消</button>
+            <button type="button" class="btn-ghost" id="survey-reupload">重新上傳</button>
+            <button type="button" class="btn-primary" id="survey-confirm-import">確認匯入</button>
+          </div>
+        </div>
+
+        <!-- Step 4: 匯入結果 + 預先生成 -->
+        <div id="survey-step-result" style="display:none;">
+          <div id="survey-result-summary" style="margin-bottom:16px;"></div>
+
+          <!-- 預先生成說帖區 -->
+          <div class="survey-generate-box">
+            <h4 style="margin:0 0 8px;">⚡ 預先生成回訪說帖</h4>
+            <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">
+              系統將以 <strong>Email</strong> 格式，為此次匯入的客戶預先生成回訪說帖，存入資料庫。<br>
+              業務可後續在「生成說帖」頁面對對應說帖進行編輯或重新生成。
+            </p>
+            <div id="survey-gen-progress-wrap" style="display:none;">
+              <div class="survey-progress-bar-wrap">
+                <div class="survey-progress-bar" id="survey-gen-bar"></div>
+              </div>
+              <div id="survey-gen-status" style="font-size:0.82rem;color:var(--text-secondary);margin-top:6px;"></div>
+            </div>
+            <div class="modal-actions" style="margin-top:8px;">
+              <button type="button" class="btn-ghost" id="survey-skip-generate">跳過，稍後手動生成</button>
+              <button type="button" class="btn-primary" id="survey-start-generate">開始生成（<span id="survey-gen-count">0</span> 筆）</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ===== Modal：問卷記錄編輯 ===== -->
+    <div id="survey-edit-modal" class="modal">
+      <div class="modal-inner" style="max-width:480px;">
+        <h3>編輯問卷記錄</h3>
+        <form id="survey-edit-form">
+          <input type="hidden" name="id">
+          <div class="form-group">
+            <label>潛客代號</label>
+            <div id="survey-edit-code" style="font-family:monospace;font-size:0.95rem;padding:6px 0;color:var(--text);"></div>
+          </div>
+          <div class="form-group">
+            <label>公司名稱</label>
+            <div id="survey-edit-company" style="font-size:0.95rem;padding:6px 0;color:var(--text);"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>聯絡人姓名</label>
+              <input type="text" name="contact_name" placeholder="姓名">
+            </div>
+            <div class="form-group">
+              <label>職稱</label>
+              <input type="text" name="job_title" placeholder="職稱">
+            </div>
+          </div>
+          <div class="form-group" style="display:flex;gap:24px;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.9rem;color:var(--text);">
+              <input type="checkbox" name="attended" style="width:auto;"> 已實際到場
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.9rem;color:var(--text);">
+              <input type="checkbox" name="has_survey" style="width:auto;"> 已填寫問卷
+            </label>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn-ghost" id="survey-edit-cancel">取消</button>
+            <button type="submit" class="btn-primary">儲存</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <!-- ===== Modal：資源新增 / 編輯 ===== -->
     <div id="resource-modal" class="modal">
